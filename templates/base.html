@@ -1,0 +1,76 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R.O.O.K - Resilient Observation & Outlook Kernel</title>
+    
+    <!-- Meta tags for SEO -->
+    <meta name="description" content="AI-Powered Climate Digital Twin Platform of India - Pilot Andhra Pradesh region. Providing real-time monitoring, AI forecasting, and interactive scenario simulation.">
+    <meta name="keywords" content="ROOK, Climate Twin, Digital Twin, India, Andhra Pradesh, Weather Forecast, Climate Simulation, AI Weather">
+    <meta name="author" content="ISRO Hackathon Team">
+
+    <!-- Google Fonts: Outfit (headings) & Inter (body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Leaflet.js Geospatial Mapping Library -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        navy: {
+                            900: '#081420',
+                            850: '#0b1928',
+                            800: '#0D1B2A',
+                            700: '#152b44',
+                        },
+                        ocean: {
+                            500: '#1E88E5',
+                        },
+                        cyan: {
+                            400: '#26C6DA',
+                            500: '#00BCD4',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- ApexCharts for Modern Visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- GSAP for Micro-Animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+
+    <!-- Custom Digital Twin Styling -->
+    <link rel="stylesheet" href="{% static 'css/custom.css' %}">
+</head>
+<body class="bg-navy-900 text-slate-100 font-sans min-h-screen overflow-hidden selection:bg-cyan-500 selection:text-navy-900">
+    
+    {% block content %}
+    <!-- Main page content injected here -->
+    {% endblock %}
+
+    <!-- Initialize Lucide Icons -->
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

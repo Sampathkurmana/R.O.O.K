@@ -1,0 +1,845 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="relative w-screen h-screen overflow-hidden font-sans main-layout select-none" data-active-panel="{{ active_panel }}">
+    
+    <!-- Hero Geospatial Map Container -->
+    <div id="map" class="absolute inset-0 w-full h-full z-0"></div>
+
+    <!-- Vignette / Dark Moody Overlay for Map -->
+    <div class="map-overlay-vignette"></div>
+
+    <!-- Map Grid/Coordinates Decorative Overlay -->
+    <div class="absolute inset-0 pointer-events-none border border-slate-500/5 z-10"></div>
+
+    <!-- TOP NAVIGATION: Floating Glass Header -->
+    <header class="absolute top-4 left-72 right-4 h-16 z-10 flex items-center justify-between px-6 glass-panel rounded-xl">
+        <!-- Search Bar -->
+        <div class="relative w-72">
+            <input type="text" id="search-input" placeholder="Search city or district..." class="w-full h-9 bg-navy-950/40 border border-slate-800/40 rounded-lg px-4 pl-9 text-xs focus:outline-none focus:border-cyan-500 text-slate-200 transition-colors">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-2.5"></i>
+            <!-- Search Results Dropdown -->
+            <div id="search-dropdown" class="absolute left-0 right-0 mt-1.5 max-h-48 overflow-y-auto bg-navy-950/95 border border-slate-800/90 rounded-lg shadow-xl hidden z-50 glass-panel scrollbar-thin scrollbar-thumb-slate-800">
+                <!-- Dropdown items dynamically generated -->
+            </div>
+        </div>
+
+        <!-- Right Side Header Controls -->
+        <div class="flex items-center gap-4">
+            <!-- Date Display -->
+            <div class="flex items-center gap-1.5 bg-navy-950/30 px-3 py-1.5 rounded-lg border border-slate-800/40 text-xs text-slate-300">
+                <i data-lucide="calendar" class="w-3.5 h-3.5 text-cyan-400"></i>
+                <span>21 Jun 2025</span>
+            </div>
+            
+            <!-- Time Display -->
+            <div class="flex items-center gap-1.5 bg-navy-950/30 px-3 py-1.5 rounded-lg border border-slate-800/40 text-xs text-slate-300">
+                <i data-lucide="clock" class="w-3.5 h-3.5 text-cyan-400"></i>
+                <span>11:00 AM IST</span>
+            </div>
+
+            <!-- AP / Region Selector Dropdown -->
+            <button onclick="resetMapView()" class="h-9 bg-navy-950/50 hover:bg-navy-950/80 border border-slate-800/60 rounded-lg px-3.5 flex items-center gap-2 text-xs font-semibold text-slate-200 transition-colors">
+                <i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-400"></i>
+                <span id="location-indicator">Andhra Pradesh</span>
+                <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400"></i>
+            </button>
+
+            <!-- Hamburger Button -->
+            <button class="w-9 h-9 rounded-lg bg-navy-950/50 hover:bg-navy-950/80 border border-slate-800/60 flex items-center justify-center text-slate-300">
+                <i data-lucide="menu" class="w-4 h-4"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- FLOATING SIDEBAR: Left Navigation -->
+    <aside class="absolute left-4 top-4 bottom-4 w-64 z-20 glass-panel rounded-xl flex flex-col p-4">
+        <!-- Logo and Project Info -->
+        <div class="flex flex-col items-center mb-5 border-b border-slate-800/40 pb-4 gap-1.5">
+            <!-- PNG Logo -->
+            <div class="logo-img-wrapper w-full flex items-center justify-center">
+                <img src="{% static 'logo.png' %}" alt="R.O.O.K Logo"
+                     class="rook-logo-img w-full max-w-[170px] h-auto object-contain drop-shadow-lg select-none" draggable="false">
+            </div>
+            <!-- Animated Full Form Title -->
+            <h1 id="rook-fullform" class="rook-fullform-text text-[9px] uppercase tracking-[0.15em] text-center font-black font-display leading-relaxed mt-1 select-none">
+                Resilient · Observation · Outlook · Kernel
+            </h1>
+        </div>
+
+        <!-- Sidebar Navigation Menu -->
+        <div class="flex-1 flex flex-col gap-1 overflow-y-auto pr-1">
+            <a href="#" data-panel="dashboard" class="nav-item active flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="home" class="w-4.5 h-4.5"></i>
+                <span>Home</span>
+            </a>
+            <a href="#" data-panel="weather" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="cloud-sun" class="w-4.5 h-4.5"></i>
+                <span>Live Weather</span>
+            </a>
+            <a href="#" data-panel="forecast" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="cloud-rain" class="w-4.5 h-4.5"></i>
+                <span>Forecast</span>
+            </a>
+            <a href="#" data-panel="analytics" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="bar-chart-3" class="w-4.5 h-4.5"></i>
+                <span>Analytics</span>
+            </a>
+
+            <a href="#" data-panel="simulator" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="sliders" class="w-4.5 h-4.5"></i>
+                <span>Scenario Simulator</span>
+            </a>
+            <a href="#" data-panel="satellite" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="globe" class="w-4.5 h-4.5"></i>
+                <span>Satellite View</span>
+            </a>
+            <a href="#" data-panel="alerts" class="nav-item flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="bell" class="w-4.5 h-4.5"></i>
+                    <span>Alerts</span>
+                </div>
+                <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+            </a>
+            <a href="#" data-panel="reports" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="file-text" class="w-4.5 h-4.5"></i>
+                <span>Reports</span>
+            </a>
+
+            <a href="#" data-panel="settings" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="settings" class="w-4.5 h-4.5"></i>
+                <span>Settings</span>
+            </a>
+            <a href="#" data-panel="about" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+                <i data-lucide="info" class="w-4.5 h-4.5"></i>
+                <span>About</span>
+            </a>
+        </div>
+
+        <!-- Sidebar Footer -->
+        <div class="mt-auto pt-4 border-t border-slate-800/40 flex items-center justify-between text-[10px] text-slate-500">
+            <div class="flex flex-col">
+                <span class="font-semibold text-slate-400 uppercase tracking-wider text-[8px]">Last Updated</span>
+                <span id="last-updated-time">21 Jun 2025, 11:00 AM IST</span>
+            </div>
+            <button onclick="refreshData()" class="hover:text-cyan-400 transition-colors" title="Force refresh feeds">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            </button>
+        </div>
+    </aside>
+
+    <!-- MAP UTILITIES: Zoom Controls (Floating Right) -->
+    <div class="absolute right-4 top-24 z-10 flex flex-col gap-1.5 pointer-events-auto">
+        <button id="zoom-in" class="w-9 h-9 rounded-lg bg-navy-950/60 border border-slate-800/60 flex items-center justify-center hover:bg-navy-900/80 transition-colors text-slate-200 shadow-lg">
+            <i data-lucide="plus" class="w-4.5 h-4.5"></i>
+        </button>
+        <button id="zoom-out" class="w-9 h-9 rounded-lg bg-navy-950/60 border border-slate-800/60 flex items-center justify-center hover:bg-navy-900/80 transition-colors text-slate-200 shadow-lg">
+            <i data-lucide="minus" class="w-4.5 h-4.5"></i>
+        </button>
+        <button id="re-center" class="w-9 h-9 rounded-lg bg-navy-950/60 border border-slate-800/60 flex items-center justify-center hover:bg-navy-900/80 transition-colors text-slate-200 shadow-lg" title="Re-center map">
+            <i data-lucide="focus" class="w-4.5 h-4.5"></i>
+        </button>
+    </div>
+
+    <!-- Bottom Weather Layer Selector (Windy-Style Horizontal Bar) -->
+    <div id="map-layers-panel" class="absolute z-20 pointer-events-auto hidden" style="bottom: 18px; left: 50%; transform: translateX(-50%);">
+        <div class="flex items-center glass-panel border border-slate-700/50 overflow-hidden" style="border-radius: 16px; backdrop-filter: blur(28px);">
+            
+            <!-- Satellite (independent toggle, visually separated) -->
+            <button data-layer="satellite" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="border-right: 1px solid rgba(100,116,139,0.3); min-width: 72px;">
+                <i data-lucide="globe" class="w-4 h-4"></i>
+                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;">Satellite</span>
+            </button>
+
+            <!-- Weather layers (mutually exclusive) -->
+            <button data-layer="wind" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 68px;">
+                <i data-lucide="wind" class="w-4 h-4"></i>
+                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Wind</span>
+            </button>
+
+            <button data-layer="rainfall" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 68px;">
+                <i data-lucide="cloud-rain" class="w-4 h-4"></i>
+                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Rain</span>
+            </button>
+
+            <button data-layer="temperature" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 80px;">
+                <i data-lucide="thermometer" class="w-4 h-4"></i>
+                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Temperature</span>
+            </button>
+
+            <button data-layer="pressure" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 76px;">
+                <i data-lucide="gauge" class="w-4 h-4"></i>
+                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Pressure</span>
+            </button>
+
+            <button data-layer="humidity" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 76px;">
+                <i data-lucide="droplet" class="w-4 h-4"></i>
+                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Humidity</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Active Variable Heatmap Legend (Color Scale Bar, above bottom selector) -->
+    <div id="map-legend" class="absolute z-10 glass-panel rounded-xl px-3 py-2.5 shadow-lg border border-slate-800/80 pointer-events-auto" style="bottom: 96px; right: 16px; min-width: 150px;">
+        <!-- Filled dynamically by updateMapLegend() -->
+    </div>
+
+
+    <!-- ================= DASHBOARD LAYOUT WIDGETS (HOME VIEW ONLY) ================= -->
+    <div id="dashboard-widgets" class="pointer-events-none">
+        
+        <!-- Left Column: KPI cards (clutter-free, no bottom cards) -->
+        <div class="absolute left-72 top-24 w-96 z-10 flex flex-col gap-4 pointer-events-auto">
+            <div class="grid grid-cols-2 gap-3.5">
+                <!-- Rainfall -->
+                <div class="glass-panel p-3.5 rounded-xl flex flex-col gap-1.5 glow-rainfall cursor-pointer">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span class="text-[9px] uppercase font-bold tracking-wider">Rainfall (24h)</span>
+                        <i data-lucide="cloud-rain" class="w-4.5 h-4.5 text-blue-400 animate-float"></i>
+                    </div>
+                    <span id="kpi-rain" class="font-display font-extrabold text-xl text-white">12.4 mm</span>
+                    <span class="text-[9px] text-blue-400 font-bold flex items-center gap-1">
+                        <i data-lucide="chevron-down" class="w-3 h-3"></i> 8.6 mm vs yesterday
+                    </span>
+                </div>
+
+                <!-- Temperature -->
+                <div class="glass-panel p-3.5 rounded-xl flex flex-col gap-1.5 glow-temp cursor-pointer">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span class="text-[9px] uppercase font-bold tracking-wider">Temperature</span>
+                        <i data-lucide="thermometer" class="w-4.5 h-4.5 text-orange-400"></i>
+                    </div>
+                    <span id="kpi-temp" class="font-display font-extrabold text-xl text-white">32.4 °C</span>
+                    <span class="text-[9px] text-orange-400 font-bold flex items-center gap-1">
+                        <i data-lucide="chevron-up" class="w-3 h-3"></i> 2.3 °C vs yesterday
+                    </span>
+                </div>
+
+                <!-- Humidity -->
+                <div class="glass-panel p-3.5 rounded-xl flex flex-col gap-1.5 glow-humidity cursor-pointer">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span class="text-[9px] uppercase font-bold tracking-wider">Humidity</span>
+                        <i data-lucide="droplet" class="w-4.5 h-4.5 text-teal-400"></i>
+                    </div>
+                    <span id="kpi-humidity" class="font-display font-extrabold text-xl text-white">78%</span>
+                    <span class="text-[9px] text-teal-400 font-bold flex items-center gap-1">
+                        <i data-lucide="chevron-up" class="w-3 h-3"></i> 5% vs yesterday
+                    </span>
+                </div>
+
+                <!-- Wind Speed -->
+                <div class="glass-panel p-3.5 rounded-xl flex flex-col gap-1.5 glow-wind cursor-pointer">
+                    <div class="flex items-center justify-between text-slate-400">
+                        <span class="text-[9px] uppercase font-bold tracking-wider">Wind Speed</span>
+                        <i data-lucide="wind" class="w-4.5 h-4.5 text-cyan-400"></i>
+                    </div>
+                    <span id="kpi-wind" class="font-display font-extrabold text-xl text-white">18 kt</span>
+                    <span class="text-[9px] text-cyan-400 font-bold flex items-center gap-1">
+                        <i data-lucide="navigation" class="w-3 h-3 rotate-45"></i> <span id="kpi-wind-dir">SW</span>
+                    </span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ================= FLOATING ACTION PANELS (RIGHT-HAND SIDE) ================= -->
+    <div id="right-side-panel-container" class="absolute right-4 top-24 bottom-4 w-96 z-10 flex flex-col pointer-events-none hidden">
+        
+        <!-- PANEL: LIVE WEATHER -->
+        <div id="panel-weather" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Live Weather Panel</span>
+                    <div class="flex items-center gap-2">
+                        <span id="model-source-badge" class="text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-amber-500/20 text-amber-400 border border-amber-500/30">📍 IDW Spatial Estimate</span>
+                        <i data-lucide="radio" class="w-4.5 h-4.5 text-cyan-400"></i>
+                    </div>
+                </div>
+                <p class="text-[11px] text-slate-400 font-medium">Click anywhere on the map of Andhra Pradesh to query dynamic real-time climate data.</p>
+
+                <!-- Transparent Query details -->
+                <div id="clicked-location-panel" class="bg-navy-950/20 border border-slate-800/40 rounded-xl p-3.5 flex flex-col gap-3.5 backdrop-blur-md transition-all duration-300">
+                    <div class="flex items-center justify-between text-xs font-bold text-cyan-400 border-b border-slate-900/30 pb-2">
+                        <span>QUERY LOCATION INFO</span>
+                        <div class="flex items-center gap-1.5">
+                            <span class="pulse-led bg-cyan-400"></span>
+                            <span class="text-[9px] text-slate-400 uppercase font-normal tracking-wider">Active Query</span>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-2.5 text-xs text-slate-300">
+                        <div class="flex justify-between items-center py-0.5 border-b border-slate-800/20">
+                            <span class="text-slate-400 text-[10px] uppercase font-bold">Selected Area:</span>
+                            <span id="clicked-area-name" class="font-bold text-white">Andhra Pradesh</span>
+                        </div>
+                        <div class="flex justify-between items-center py-0.5 border-b border-slate-800/20">
+                            <span class="text-slate-400 text-[10px] uppercase font-bold">Coordinates:</span>
+                            <span id="clicked-coords" class="font-mono text-cyan-400 text-[10px]">15.9129° N, 79.7400° E</span>
+                        </div>
+                        <div class="flex justify-between items-center py-0.5 border-b border-slate-800/20">
+                            <span class="text-slate-400 text-[10px] uppercase font-bold">Temperature:</span>
+                            <span id="clicked-temp" class="font-bold text-white">32.4 °C</span>
+                        </div>
+                        <div class="flex justify-between items-center py-0.5 border-b border-slate-800/20">
+                            <span class="text-slate-400 text-[10px] uppercase font-bold">Rainfall (24h):</span>
+                            <span id="clicked-rain" class="font-bold text-white">12.4 mm</span>
+                        </div>
+                        <div class="flex justify-between items-center py-0.5 border-b border-slate-800/20">
+                            <span class="text-slate-400 text-[10px] uppercase font-bold">Wind Vector:</span>
+                            <span id="clicked-wind" class="font-bold text-white">18 kt SW</span>
+                        </div>
+                        <div class="flex justify-between items-center py-0.5">
+                            <span class="text-slate-400 text-[10px] uppercase font-bold">Air Pressure:</span>
+                            <span id="clicked-pressure" class="font-bold text-white">1008 hPa</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-[1px] bg-slate-800/40"></div>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">AWS Ground Stations</p>
+
+                <!-- Districts Table list -->
+                <div class="flex-1 flex flex-col gap-1.5 overflow-y-auto">
+                    <div class="flex flex-col gap-1">
+                        <button onclick="selectDistrict({name: 'Visakhapatnam', coords: [17.6868, 83.2185], temp: 31.2, rain: 18.5, humidity: 85, wind: 24, dir: 'SW', pressure: 1006})" class="w-full flex items-center justify-between p-2.5 hover:bg-slate-800/30 rounded border border-transparent hover:border-slate-800 text-left text-xs transition duration-150">
+                            <span class="font-semibold text-slate-300">Visakhapatnam</span>
+                            <span class="text-slate-400">31.2°C / 18.5mm</span>
+                            <span class="badge-high px-1.5 py-0.5 rounded text-[10px] font-bold uppercase">High</span>
+                        </button>
+                        <button onclick="selectDistrict({name: 'Kurnool', coords: [15.8281, 78.0373], temp: 35.1, rain: 1.0, humidity: 52, wind: 14, dir: 'WNW', pressure: 1009})" class="w-full flex items-center justify-between p-2.5 hover:bg-slate-800/30 rounded border border-transparent hover:border-slate-800 text-left text-xs transition duration-150">
+                            <span class="font-semibold text-slate-300">Kurnool</span>
+                            <span class="text-slate-400">35.1°C / 1.0mm</span>
+                            <span class="badge-medium px-1.5 py-0.5 rounded text-[10px] font-bold uppercase">Medium</span>
+                        </button>
+                        <button onclick="selectDistrict({name: 'East Godavari', coords: [17.2305, 81.8282], temp: 31.8, rain: 22.4, humidity: 88, wind: 22, dir: 'SW', pressure: 1007})" class="w-full flex items-center justify-between p-2.5 hover:bg-slate-800/30 rounded border border-transparent hover:border-slate-800 text-left text-xs transition duration-150">
+                            <span class="font-semibold text-slate-300">East Godavari</span>
+                            <span class="text-slate-400">31.8°C / 22.4mm</span>
+                            <span class="badge-high px-1.5 py-0.5 rounded text-[10px] font-bold uppercase">High</span>
+                        </button>
+                        <button onclick="selectDistrict({name: 'Anantapur', coords: [14.6819, 77.6006], temp: 34.2, rain: 2.1, humidity: 55, wind: 15, dir: 'W', pressure: 1008})" class="w-full flex items-center justify-between p-2.5 hover:bg-slate-800/30 rounded border border-transparent hover:border-slate-800 text-left text-xs transition duration-150">
+                            <span class="font-semibold text-slate-300">Anantapur</span>
+                            <span class="text-slate-400">34.2°C / 2.1mm</span>
+                            <span class="badge-medium px-1.5 py-0.5 rounded text-[10px] font-bold uppercase">Medium</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: FORECAST -->
+        <div id="panel-forecast" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Forecasting Center</span>
+                    <i data-lucide="bar-chart-2" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">Predictive climate outlook incorporating localized deep ensemble models for Andhra Pradesh.</p>
+
+                <!-- Hourly Rain Trend -->
+                <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">Hourly Rainfall Probabilities</span>
+                    <div id="chart-hourly" class="min-h-[120px] bg-navy-950/20 rounded border border-slate-800/30"></div>
+                </div>
+
+                <div class="h-[1px] bg-slate-800/40"></div>
+                
+                <!-- 5-Day Cards -->
+                <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">5-Day Outlook</span>
+                    <div class="grid grid-cols-5 gap-1.5 text-center">
+                        <div class="bg-navy-950/30 p-2 rounded border border-slate-800/50 flex flex-col items-center">
+                            <span class="text-[9px] text-slate-500 font-semibold block">SUN</span>
+                            <i data-lucide="cloud-rain" class="w-4 h-4 text-sky-400 my-1"></i>
+                            <span class="text-[10px] font-semibold text-slate-300">12mm</span>
+                        </div>
+                        <div class="bg-navy-950/30 p-2 rounded border border-slate-800/50 flex flex-col items-center">
+                            <span class="text-[9px] text-slate-500 font-semibold block">MON</span>
+                            <i data-lucide="cloud-drizzle" class="w-4 h-4 text-cyan-400 my-1"></i>
+                            <span class="text-[10px] font-semibold text-slate-300">18mm</span>
+                        </div>
+                        <div class="bg-navy-950/30 p-2 rounded border border-slate-800/50 flex flex-col items-center">
+                            <span class="text-[9px] text-slate-500 font-semibold block">TUE</span>
+                            <i data-lucide="cloud-lightning" class="w-4 h-4 text-orange-400 my-1"></i>
+                            <span class="text-[10px] font-semibold text-slate-300">25mm</span>
+                        </div>
+                        <div class="bg-navy-950/30 p-2 rounded border border-slate-800/50 flex flex-col items-center">
+                            <span class="text-[9px] text-slate-500 font-semibold block">WED</span>
+                            <i data-lucide="cloud-rain" class="w-4 h-4 text-sky-400 my-1"></i>
+                            <span class="text-[10px] font-semibold text-slate-300">20mm</span>
+                        </div>
+                        <div class="bg-navy-950/30 p-2 rounded border border-slate-800/50 flex flex-col items-center">
+                            <span class="text-[9px] text-slate-500 font-semibold block">THU</span>
+                            <i data-lucide="cloud" class="w-4 h-4 text-slate-400 my-1"></i>
+                            <span class="text-[10px] font-semibold text-slate-300">15mm</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: ANALYTICS (relocated here to prevent cluttering bottom of map) -->
+        <div id="panel-analytics" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Analytics & Trends</span>
+                    <i data-lucide="bar-chart-3" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">Detailed diagnostic summaries and multi-day climate trends across pilot locations.</p>
+
+                <!-- Trend Chart container -->
+                <div class="bg-navy-950/30 border border-slate-800/40 p-3 rounded-lg flex flex-col gap-2">
+                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">5 Day Rainfall Forecast (mm)</span>
+                    <div id="chart-trends" class="min-h-[160px]"></div>
+                </div>
+
+                <div class="h-[1px] bg-slate-800/40"></div>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Conditions Summary</p>
+
+                <!-- Current Conditions list (Vertically aligned for sidebar) -->
+                <div class="flex flex-col gap-2">
+                    <!-- Rainfall Card -->
+                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-7 h-7 rounded bg-blue-500/10 flex items-center justify-center">
+                                <i data-lucide="cloud-rain" class="w-4 h-4 text-blue-400"></i>
+                            </div>
+                            <span class="text-xs text-slate-300 font-semibold">Rainfall (24h)</span>
+                        </div>
+                        <span id="current-cond-rain" class="font-display font-extrabold text-sm text-white">12.4 mm</span>
+                    </div>
+                    <!-- Max Temp Card -->
+                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-7 h-7 rounded bg-orange-500/10 flex items-center justify-center">
+                                <i data-lucide="thermometer" class="w-4 h-4 text-orange-400"></i>
+                            </div>
+                            <span class="text-xs text-slate-300 font-semibold">Max Temp</span>
+                        </div>
+                        <span id="current-cond-temp-max" class="font-display font-extrabold text-sm text-orange-400">33.1 °C</span>
+                    </div>
+                    <!-- Min Temp Card -->
+                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-7 h-7 rounded bg-sky-500/10 flex items-center justify-center">
+                                <i data-lucide="thermometer-snowflake" class="w-4 h-4 text-sky-400"></i>
+                            </div>
+                            <span class="text-xs text-slate-300 font-semibold">Min Temp</span>
+                        </div>
+                        <span id="current-cond-temp-min" class="font-display font-extrabold text-sm text-sky-400">25.6 °C</span>
+                    </div>
+                    <!-- Humidity Card -->
+                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-7 h-7 rounded bg-teal-500/10 flex items-center justify-center">
+                                <i data-lucide="droplet" class="w-4 h-4 text-teal-400"></i>
+                            </div>
+                            <span class="text-xs text-slate-300 font-semibold">Humidity</span>
+                        </div>
+                        <span id="current-cond-humidity" class="font-display font-extrabold text-sm text-white">78%</span>
+                    </div>
+                    <!-- Wind Speed Card -->
+                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
+                        <div class="flex items-center gap-2.5">
+                            <div class="w-7 h-7 rounded bg-cyan-500/10 flex items-center justify-center">
+                                <i data-lucide="wind" class="w-4 h-4 text-cyan-400"></i>
+                            </div>
+                            <span class="text-xs text-slate-300 font-semibold">Wind Speed</span>
+                        </div>
+                        <span id="current-cond-wind" class="font-display font-extrabold text-sm text-white">18 kt <span class="text-[9px] text-cyan-400 font-normal">SW</span></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: DIGITAL TWIN -->
+        <div id="panel-digital-twin" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Digital Twin Engine</span>
+                    <i data-lucide="cpu" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">R.O.O.K digital twin mirrors the physical weather patterns using historical reanalysis and model predictions.</p>
+
+                <!-- Model Stats -->
+                <div class="p-3 bg-navy-950/40 border border-slate-800/50 rounded-lg flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400 font-semibold">MODEL RESOLUTION</span>
+                        <span class="text-cyan-400 font-bold">0.05° x 0.05°</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400 font-semibold">TEMPORAL INTERVAL</span>
+                        <span class="text-cyan-400 font-bold">3 Hourly Updates</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400 font-semibold">SIMULATION STATUS</span>
+                        <span class="text-emerald-400 font-bold">Synchronized</span>
+                    </div>
+                </div>
+
+                <!-- Respected Topography and Elevation Information -->
+                <div class="h-[1px] bg-slate-800/40 my-1.5"></div>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Topographic Elevation Profile</p>
+                <div class="p-3 bg-navy-950/40 border border-slate-800/50 rounded-lg flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Average Elevation</span>
+                        <span class="font-bold text-white">269 m</span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Minimum Elevation</span>
+                        <span class="font-bold text-emerald-400">-1 m <span class="text-[9px] font-normal text-slate-500">(Coastline)</span></span>
+                    </div>
+                    <div class="flex items-center justify-between text-xs">
+                        <span class="text-slate-400">Maximum Elevation</span>
+                        <span class="font-bold text-rose-400">1,585 m <span class="text-[9px] font-normal text-slate-500">(Jindhagada Peak)</span></span>
+                    </div>
+                    <div class="h-[1px] bg-slate-800/30 my-1"></div>
+                    <p class="text-[10px] text-slate-400 leading-relaxed">Andhra Pradesh's terrain rises from its -1m coastal plains to the Eastern Ghats summits, averaging 269m. These contours significantly govern precipitation and cloud indexing models.</p>
+                </div>
+
+                <!-- Variables Toggle -->
+                <div class="h-[1px] bg-slate-800/40 my-1.5"></div>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Digital Twin Variables</p>
+                <div class="flex flex-col gap-2 text-xs">
+                    <label class="flex items-center gap-2 cursor-pointer p-1.5 hover:bg-slate-800/20 rounded">
+                        <input type="checkbox" checked disabled class="accent-cyan-500 rounded">
+                        <span>Precipitation (Rainfall) Index</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer p-1.5 hover:bg-slate-800/20 rounded">
+                        <input type="checkbox" disabled class="accent-cyan-500 rounded">
+                        <span>Land Surface Temp (LST) Anomaly</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer p-1.5 hover:bg-slate-800/20 rounded">
+                        <input type="checkbox" disabled class="accent-cyan-500 rounded">
+                        <span>Sea Surface Temp (SST) Deviation</span>
+                    </label>
+                </div>
+
+                <!-- Digital Twin Chronology Slider -->
+                <div class="h-[1px] bg-slate-800/40 my-1.5"></div>
+                <div class="flex flex-col gap-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Twin Chronology</span>
+                        <span id="timeline-indicator-text" class="text-cyan-400 font-bold tracking-wider text-[10px] bg-cyan-400/10 px-2 py-0.5 rounded">REAL-TIME OPERATIONAL</span>
+                    </div>
+                    <div class="relative w-full px-1">
+                        <input type="range" id="timelineRange" min="0" max="2" value="1" step="1" class="w-full">
+                        <div class="flex justify-between text-[9px] text-slate-400 font-semibold mt-1">
+                            <span>PAST (-5Y)</span>
+                            <span>PRESENT</span>
+                            <span>FUTURE (+10Y)</span>
+                        </div>
+                    </div>
+                    <p id="timeline-step-label" class="text-[11px] text-slate-400 text-center font-medium">Real-time Operations (2026)</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: SCENARIO SIMULATOR -->
+        <div id="panel-simulator" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Scenario Simulator</span>
+                    <i data-lucide="sliders" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">Alter key climate variables to simulate environmental shifts and compute immediate hazard risk factors.</p>
+
+                <!-- Temperature Slider -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between text-[11px] font-semibold">
+                        <span class="text-slate-300">Temperature Deviation</span>
+                        <span id="sim-temp-val" class="text-orange-400 font-bold">0.0°C</span>
+                    </div>
+                    <input type="range" id="sim-temp" min="-5.0" max="5.0" step="0.2" value="0.0">
+                </div>
+
+                <!-- Rainfall Slider -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between text-[11px] font-semibold">
+                        <span class="text-slate-300">Rainfall Variance</span>
+                        <span id="sim-rain-val" class="text-blue-400 font-bold">0%</span>
+                    </div>
+                    <input type="range" id="sim-rain" min="-50" max="50" step="2" value="0">
+                </div>
+
+                <!-- Humidity Slider -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between text-[11px] font-semibold">
+                        <span class="text-slate-300">Humidity Offset</span>
+                        <span id="sim-humidity-val" class="text-teal-400 font-bold">0%</span>
+                    </div>
+                    <input type="range" id="sim-humidity" min="-20" max="20" step="1" value="0">
+                </div>
+
+                <div class="h-[1px] bg-slate-800/40 my-1.5"></div>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Calculated Risk Index Output</p>
+
+                <!-- Simulator Outputs -->
+                <div class="flex flex-col gap-2.5">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-slate-400 font-semibold">Drought Risk Index</span>
+                        <span id="risk-drought" class="text-xs px-2 py-0.5 rounded font-bold uppercase badge-low">Low</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-slate-400 font-semibold">Heatwave Risk Index</span>
+                        <span id="risk-heatwave" class="text-xs px-2 py-0.5 rounded font-bold uppercase badge-low">Low</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs text-slate-400 font-semibold">Coastal Flood Risk</span>
+                        <span id="risk-flood" class="text-xs px-2 py-0.5 rounded font-bold uppercase badge-low">Low</span>
+                    </div>
+                    <div class="flex items-center justify-between border-t border-slate-800/40 pt-2">
+                        <span class="text-xs text-slate-400 font-semibold">Water Stress Level</span>
+                        <span id="risk-water" class="text-xs font-bold text-slate-200">45.0%</span>
+                    </div>
+                    <div class="w-full bg-slate-800/60 h-1.5 rounded-full overflow-hidden">
+                        <div id="stress-progress" class="bg-cyan-500 h-full rounded-full transition-all duration-300" style="width: 45%;"></div>
+                    </div>
+                    <div class="flex flex-col gap-0.5">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Agricultural Impact</span>
+                        <p id="risk-agri" class="text-xs font-semibold text-slate-200">Optimal Yield Output</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: SATELLITE VIEW -->
+        <div id="panel-satellite" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">INSAT Space Imagery</span>
+                    <i data-lucide="orbit" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">Display real-time raster layers captured directly from INSAT series and ISRO Bhuvan satellites.</p>
+
+                <!-- Imagery Layers checkboxes -->
+                <div class="flex flex-col gap-3 mt-1.5">
+                    <label class="flex items-center justify-between cursor-pointer p-2.5 bg-navy-950/40 hover:bg-navy-950/80 border border-slate-800/60 rounded-lg transition-colors">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="satellite" class="w-4 h-4 text-cyan-400"></i>
+                            <div class="flex flex-col">
+                                <span class="text-xs font-semibold text-slate-200">INSAT-3DR Cloud Cover</span>
+                                <span class="text-[9px] text-slate-500">True-color visual cloud mapping</span>
+                            </div>
+                        </div>
+                        <input type="checkbox" class="accent-cyan-500">
+                    </label>
+
+                    <label class="flex items-center justify-between cursor-pointer p-2.5 bg-navy-950/40 hover:bg-navy-950/80 border border-slate-800/60 rounded-lg transition-colors">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="thermometer-sun" class="w-4 h-4 text-orange-400"></i>
+                            <div class="flex flex-col">
+                                <span class="text-xs font-semibold text-slate-200">Land Surface Temp (LST)</span>
+                                <span class="text-[9px] text-slate-500">INSAT LST thermal imaging layer</span>
+                            </div>
+                        </div>
+                        <input type="checkbox" class="accent-cyan-500">
+                    </label>
+
+                    <label class="flex items-center justify-between cursor-pointer p-2.5 bg-navy-950/40 hover:bg-navy-950/80 border border-slate-800/60 rounded-lg transition-colors">
+                        <div class="flex items-center gap-2.5">
+                            <i data-lucide="waves" class="w-4 h-4 text-indigo-400"></i>
+                            <div class="flex flex-col">
+                                <span class="text-xs font-semibold text-slate-200">Sea Surface Temp (SST)</span>
+                                <span class="text-[9px] text-slate-500">Bay of Bengal marine surface index</span>
+                            </div>
+                        </div>
+                        <input type="checkbox" class="accent-cyan-500">
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: ALERTS PORTAL -->
+        <div id="panel-alerts" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Severe Climate Alerts</span>
+                    <i data-lucide="shield-alert" class="w-4.5 h-4.5 text-rose-500"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">Active meteorological warnings generated dynamically from observations and prediction models.</p>
+
+                <!-- Warning items wrapper -->
+                <div id="alerts-container" class="flex-1 flex flex-col gap-3.5 overflow-y-auto">
+                    <!-- Loaded dynamically via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: REPORTS -->
+        <div id="panel-reports" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Climatological Reports</span>
+                    <i data-lucide="file-spreadsheet" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">Generate and export comprehensive climate assessments, seasonal outlooks, and monsoon predictions.</p>
+
+                <div class="flex flex-col gap-3">
+                    <button id="btn-generate-report" class="h-9 bg-cyan-500 hover:bg-cyan-600 active:bg-cyan-700 text-navy-900 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 animate-spin-slow"></i>
+                        <span>Generate Monsoon Outlook</span>
+                    </button>
+                    
+                    <button id="btn-export-csv" class="h-9 bg-navy-800 hover:bg-navy-700 active:bg-navy-600 border border-slate-700 text-slate-200 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="download" class="w-4 h-4"></i>
+                        <span>Export CSV Data Sheet</span>
+                    </button>
+                </div>
+
+                <!-- Report Generated Placeholder -->
+                <div id="report-results" class="hidden flex-1 flex flex-col">
+                    <!-- Populated dynamically via JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: DATA SOURCES -->
+        <div id="panel-sources" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">External Data Feeds</span>
+                    <i data-lucide="database" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">Synchronization status of raw physical data sets feeding the R.O.O.K digital twin.</p>
+
+                <div class="flex flex-col gap-3 mt-1.5">
+                    <div class="p-3 bg-navy-950/40 border border-slate-850 rounded-lg flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 h-7 rounded bg-slate-800/80 flex items-center justify-center font-display font-bold text-xs text-cyan-400">IMD</div>
+                            <div class="flex flex-col">
+                                <span class="text-xs font-semibold text-slate-200">IMD Surface Weather</span>
+                                <span class="text-[9px] text-slate-500">Updated: 10m ago</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 glow-wind animate-pulse"></span>
+                            <span class="text-[9px] text-emerald-400 font-bold uppercase tracking-wider">ONLINE</span>
+                        </div>
+                    </div>
+
+                    <div class="p-3 bg-navy-950/40 border border-slate-850 rounded-lg flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 h-7 rounded bg-slate-800/80 flex items-center justify-center font-display font-bold text-xs text-cyan-400">ISRO</div>
+                            <div class="flex flex-col">
+                                <span class="text-xs font-semibold text-slate-200">Bhuvan Landsat Core</span>
+                                <span class="text-[9px] text-slate-500">Updated: 2h ago</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 glow-wind animate-pulse"></span>
+                            <span class="text-[9px] text-emerald-400 font-bold uppercase tracking-wider">ONLINE</span>
+                        </div>
+                    </div>
+
+                    <div class="p-3 bg-navy-950/40 border border-slate-850 rounded-lg flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <div class="w-7 h-7 rounded bg-slate-800/80 flex items-center justify-center font-display font-bold text-xs text-cyan-400">MOS</div>
+                            <div class="flex flex-col">
+                                <span class="text-xs font-semibold text-slate-200">MOSDAC Raster Stream</span>
+                                <span class="text-[9px] text-slate-500">Updated: 4h ago</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                            <span class="text-[9px] text-amber-400 font-bold uppercase tracking-wider">DELAYED</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: SYSTEM SETTINGS -->
+        <div id="panel-settings" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">System Preferences</span>
+                    <i data-lucide="settings" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-[11px] text-slate-400">Modify map controls, rendering configurations, and measurement units.</p>
+
+                <!-- Units -->
+                <div class="flex flex-col gap-2">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Temperature Units</span>
+                    <div class="flex rounded-lg overflow-hidden border border-slate-850 bg-navy-950/60 p-1">
+                        <button class="flex-1 text-center py-1.5 text-xs font-bold rounded-md bg-cyan-500 text-navy-900 shadow">CELSIUS (°C)</button>
+                        <button class="flex-1 text-center py-1.5 text-xs font-bold text-slate-400">FAHRENHEIT (°F)</button>
+                    </div>
+                </div>
+
+                <!-- Map Theme -->
+                <div class="flex flex-col gap-2 border-t border-slate-800/40 pt-3">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Render Graphics Layer</span>
+                    <div class="flex rounded-lg overflow-hidden border border-slate-850 bg-navy-950/60 p-1">
+                        <button class="flex-1 text-center py-1.5 text-xs font-bold rounded-md bg-cyan-500 text-navy-900 shadow">VECTOR MAP</button>
+                        <button class="flex-1 text-center py-1.5 text-xs font-bold text-slate-400">INSAT SATELLITE</button>
+                    </div>
+                </div>
+
+                <!-- Animations Toggle -->
+                <div class="flex flex-col gap-2 border-t border-slate-800/40 pt-3">
+                    <div class="flex justify-between items-center">
+                        <div class="flex flex-col">
+                            <span class="text-xs font-semibold text-slate-200">Fluid Micro-Animations</span>
+                            <span class="text-[9px] text-slate-500">Enable transitions and slider glows</span>
+                        </div>
+                        <input type="checkbox" checked class="accent-cyan-500">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: ABOUT -->
+        <div id="panel-about" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">About Climate Twin</span>
+                    <i data-lucide="info" class="w-4.5 h-4.5 text-cyan-400"></i>
+                </div>
+                <p class="text-xs text-slate-300 font-semibold">Resilient Observation & Outlook Kernel (R.O.O.K)</p>
+                <p class="text-[11px] text-slate-400 leading-relaxed">Developed for the ISRO Hackathon, R.O.O.K is a pilot high-resolution Climate Digital Twin designed to simulate micro-climates, rainfall contours, and sea-surface anomalies across the state of Andhra Pradesh, India.</p>
+                
+                <div class="h-[1px] bg-slate-800/40"></div>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Geographic Bounds & Elevation</p>
+                <div class="flex flex-col gap-2 text-xs">
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 font-medium">Bounding Latitude</span>
+                        <span class="text-slate-200">12.62386° N to 19.16681° N</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 font-medium">Bounding Longitude</span>
+                        <span class="text-slate-200">76.76008° E to 84.76580° E</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 font-medium">Average Elevation</span>
+                        <span class="text-slate-200">269 m</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400 font-medium">Elevation Extremes</span>
+                        <span class="text-slate-200">-1 m to 1,585 m</span>
+                    </div>
+                </div>
+                
+                <div class="h-[1px] bg-slate-800/40"></div>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Technologies Used</p>
+                <div class="flex flex-wrap gap-1.5">
+                    <span class="text-[9px] bg-navy-950/50 border border-slate-800 px-2 py-0.5 rounded text-cyan-400">Leaflet.js Mapping</span>
+                    <span class="text-[9px] bg-navy-950/50 border border-slate-800 px-2 py-0.5 rounded text-cyan-400">Django Backend</span>
+                    <span class="text-[9px] bg-navy-950/50 border border-slate-800 px-2 py-0.5 rounded text-cyan-400">ApexCharts Analytics</span>
+                    <span class="text-[9px] bg-navy-950/50 border border-slate-800 px-2 py-0.5 rounded text-cyan-400">Tailwind Visuals</span>
+                    <span class="text-[9px] bg-navy-950/50 border border-slate-800 px-2 py-0.5 rounded text-cyan-400">GSAP Animations</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<!-- Pass active panel context to js -->
+<script>
+    document.body.dataset.activePanel = "{{ active_panel }}";
+</script>
+<script src="{% static 'js/app.js' %}"></script>
+{% endblock %}

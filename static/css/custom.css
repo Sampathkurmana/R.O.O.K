@@ -1,0 +1,687 @@
+/* R.O.O.K / Climate Digital Twin Premium Styling */
+
+/* Custom Variables and Global Settings */
+:root {
+    --glass-bg: rgba(6, 18, 36, 0.45);
+    --glass-bg-hover: rgba(10, 28, 54, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-border-active: rgba(0, 210, 255, 0.35);
+    --neon-blue: #1E88E5;
+    --neon-cyan: #00D2FF;
+    --neon-orange: #FF9800;
+    --neon-teal: #00E676;
+    --neon-rose: #FF1744;
+    --shadow-glow-cyan: 0 0 15px rgba(0, 210, 255, 0.25);
+    --shadow-glow-orange: 0 0 15px rgba(255, 152, 0, 0.25);
+    --shadow-glow-teal: 0 0 15px rgba(0, 230, 118, 0.25);
+    --shadow-glow-blue: 0 0 15px rgba(30, 136, 229, 0.25);
+}
+
+/* Base Body Styling with Vignette overlay for map backdrop */
+body {
+    background-color: #040d1a !important;
+}
+
+.map-overlay-vignette {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle, rgba(4, 13, 26, 0.1) 30%, rgba(4, 13, 26, 0.6) 100%);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Animations */
+@keyframes float {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-4px); }
+    100% { transform: translateY(0px); }
+}
+
+@keyframes pulse-glow {
+    0%, 100% { opacity: 0.4; transform: scale(1); }
+    50% { opacity: 0.8; transform: scale(1.15); }
+}
+
+@keyframes map-dash {
+    to {
+        stroke-dashoffset: -1000;
+    }
+}
+
+/* Glassmorphism Panel Styling */
+.glass-panel {
+    background: var(--glass-bg);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid var(--glass-border);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel:hover {
+    background: var(--glass-bg-hover);
+    border-color: rgba(255, 255, 255, 0.13);
+}
+
+.glass-panel-active {
+    border-color: var(--glass-border-active);
+    box-shadow: var(--shadow-glow-cyan);
+}
+
+/* Navigation items styling in Sidebar */
+.nav-item {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    border-left: 3px solid transparent;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.03);
+    color: #ffffff;
+}
+
+.nav-item.active {
+    background: linear-gradient(90deg, rgba(0, 210, 255, 0.12) 0%, rgba(0, 210, 255, 0.02) 100%);
+    border-left-color: var(--neon-cyan);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+/* Custom Scrollbars for Sidebar and Panels */
+::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(4, 13, 26, 0.2);
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--neon-cyan);
+}
+
+/* Leaflet Map Specific Styling */
+#map {
+    background: #030811 !important;
+}
+
+.leaflet-container {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* Custom styles for precise boundary line animation & neon highlight */
+.ap-boundary-path {
+    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.5));
+    stroke-dasharray: 6, 6;
+    animation: map-dash 50s linear infinite;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+
+/* Custom Leaflet Tooltip & Map labels */
+.custom-leaflet-tooltip {
+    background: rgba(6, 18, 36, 0.85) !important;
+    border: 1px solid var(--glass-border) !important;
+    backdrop-filter: blur(8px) !important;
+    color: #f1f5f9 !important;
+    border-radius: 8px !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+    padding: 8px 12px !important;
+}
+
+.map-state-label {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #ffffff !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.15em !important;
+    font-size: 14px !important;
+    text-shadow: 0 0 8px rgba(0, 210, 255, 0.9), 0 2px 4px rgba(0,0,0,0.8);
+    opacity: 0.95;
+    pointer-events: none;
+}
+
+/* KPI Card Glow Styling on Dashboard */
+.glow-rainfall { 
+    border-left: 4px solid var(--neon-blue);
+}
+.glow-rainfall:hover {
+    box-shadow: var(--shadow-glow-blue);
+    border-color: var(--neon-blue);
+}
+
+.glow-temp { 
+    border-left: 4px solid var(--neon-orange);
+}
+.glow-temp:hover {
+    box-shadow: var(--shadow-glow-orange);
+    border-color: var(--neon-orange);
+}
+
+.glow-humidity { 
+    border-left: 4px solid var(--neon-teal);
+}
+.glow-humidity:hover {
+    box-shadow: var(--shadow-glow-teal);
+    border-color: var(--neon-teal);
+}
+
+.glow-wind { 
+    border-left: 4px solid var(--neon-cyan);
+}
+.glow-wind:hover {
+    box-shadow: var(--shadow-glow-cyan);
+    border-color: var(--neon-cyan);
+}
+
+/* Custom Range Slider elements styling */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgba(255, 255, 255, 0.08);
+    height: 4px;
+    border-radius: 2px;
+    outline: none;
+    transition: background 0.3s;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--neon-cyan);
+    cursor: pointer;
+    box-shadow: 0 0 6px var(--neon-cyan);
+    transition: transform 0.1s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.3);
+}
+
+/* Pulse indicator animation class */
+.pulse-led {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    animation: pulse-glow 2s infinite;
+}
+
+/* Risk badges and other indicators */
+.badge-low { background: rgba(0, 230, 118, 0.12); color: #00E676; border: 1px solid rgba(0, 230, 118, 0.25); }
+.badge-medium { background: rgba(255, 152, 0, 0.12); color: #FFB74D; border: 1px solid rgba(255, 152, 0, 0.25); }
+.badge-high { background: rgba(255, 87, 34, 0.12); color: #FF8A65; border: 1px solid rgba(255, 87, 34, 0.25); }
+.badge-critical { background: rgba(255, 23, 68, 0.15); color: #FF5252; border: 1px solid rgba(255, 23, 68, 0.4); box-shadow: 0 0 8px rgba(255, 23, 68, 0.2); }
+
+/* Custom Leaflet Control Layer Buttons styling */
+.leaflet-custom-btn {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+}
+
+/* Floating animation utilities */
+.animate-float {
+    animation: float 4s ease-in-out infinite;
+}
+
+/* Weather Station Custom Marker styles */
+.weather-station-marker {
+    position: relative;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.station-core {
+    width: 16px;
+    height: 16px;
+    background: #040d1a;
+    border: 2px solid #00d2ff;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 0 10px rgba(0, 210, 255, 0.7);
+    z-index: 2;
+}
+.anemometer-spin {
+    width: 11px;
+    height: 11px;
+    color: #00d2ff;
+    animation: spin 2.5s linear infinite;
+}
+.radar-ping {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border: 1.5px solid rgba(0, 210, 255, 0.35);
+    border-radius: 50%;
+    animation: ping-expand 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+    z-index: 1;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+@keyframes ping-expand {
+    0% { transform: scale(0.3); opacity: 1; }
+    80% { opacity: 0.5; }
+    100% { transform: scale(1.8); opacity: 0; }
+}
+
+/* Weather Layer custom markers & animations */
+.weather-layer-div-icon {
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Rain drops animation */
+.rain-drops-marker {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+.rain-cloud-icon {
+    color: #38bdf8;
+    filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.6));
+    animation: float 3s ease-in-out infinite;
+}
+.rain-drop-container {
+    position: absolute;
+    top: 18px;
+    width: 20px;
+    height: 22px;
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+}
+.rain-drop {
+    width: 2px;
+    height: 6px;
+    background: #38bdf8;
+    border-radius: 1px;
+    animation: fall 0.8s linear infinite;
+}
+.rain-drop:nth-child(1) { animation-delay: 0.1s; }
+.rain-drop:nth-child(2) { animation-delay: 0.4s; }
+.rain-drop:nth-child(3) { animation-delay: 0.2s; }
+
+@keyframes fall {
+    0% { transform: translateY(-4px); opacity: 0; }
+    30% { opacity: 1; }
+    100% { transform: translateY(18px); opacity: 0; }
+}
+
+/* Wind Breeze Animation */
+.wind-breeze-marker {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.wind-icon {
+    color: #22d3ee;
+    filter: drop-shadow(0 0 4px rgba(34, 211, 238, 0.6));
+}
+.breeze-line-container {
+    position: absolute;
+    width: 44px;
+    height: 16px;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-around;
+}
+.breeze-line {
+    height: 1.5px;
+    background: linear-gradient(90deg, transparent, #22d3ee, transparent);
+    border-radius: 1px;
+    animation: breeze 1s linear infinite;
+    width: 100%;
+}
+@keyframes breeze {
+    0% { transform: translateX(-22px); opacity: 0; }
+    40% { opacity: 0.75; }
+    100% { transform: translateX(22px); opacity: 0; }
+}
+
+/* Temperature heat wave / glow */
+.temp-heat-marker {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+.windy-temp-glow {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    filter: blur(8px);
+    opacity: 0.25;
+    animation: pulse-glow 2.5s infinite ease-in-out;
+}
+.temp-icon {
+    color: var(--heat-color, #f97316);
+    filter: drop-shadow(0 0 5px var(--heat-color, #f97316));
+}
+.heat-waves-container {
+    position: absolute;
+    top: -12px;
+    display: flex;
+    gap: 2.5px;
+}
+.heat-wave {
+    width: 2px;
+    height: 8px;
+    background: var(--heat-color, #ef4444);
+    border-radius: 1px;
+    animation: rise-wave 1s infinite ease-in-out;
+}
+.heat-wave:nth-child(1) { animation-delay: 0.1s; }
+.heat-wave:nth-child(2) { animation-delay: 0.4s; }
+.heat-wave:nth-child(3) { animation-delay: 0.2s; }
+
+@keyframes rise-wave {
+    0%, 100% { transform: translateY(0) scaleY(1); opacity: 0.3; }
+    50% { transform: translateY(-4px) scaleY(1.3); opacity: 1; }
+}
+
+/* Humidity condensation rings */
+.humidity-droplet-marker {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.humidity-icon {
+    color: #0d9488;
+    filter: drop-shadow(0 0 4px rgba(13, 148, 136, 0.6));
+    z-index: 2;
+}
+.condensation-ring {
+    position: absolute;
+    border: 1px solid #0d9488;
+    border-radius: 50%;
+    animation: condense-expand 2s infinite linear;
+    opacity: 0;
+    z-index: 1;
+}
+@keyframes condense-expand {
+    0% { width: 10px; height: 10px; opacity: 0.8; }
+    100% { width: 34px; height: 34px; opacity: 0; }
+}
+
+/* LST thermal pulse */
+.lst-thermal-marker {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.lst-icon {
+    color: #be123c;
+    filter: drop-shadow(0 0 5px rgba(190, 18, 60, 0.6));
+    z-index: 2;
+}
+.thermal-wave {
+    position: absolute;
+    border: 1px dashed #be123c;
+    border-radius: 50%;
+    animation: thermal-pulse-ring 1.8s infinite ease-out;
+    z-index: 1;
+}
+@keyframes thermal-pulse-ring {
+    0% { width: 12px; height: 12px; opacity: 0.9; }
+    100% { width: 38px; height: 38px; opacity: 0; }
+}
+
+/* SST marine ripples */
+.sst-wave-marker {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.sst-icon {
+    color: #4f46e5;
+    filter: drop-shadow(0 0 5px rgba(79, 70, 229, 0.6));
+    z-index: 2;
+}
+.marine-ripple {
+    position: absolute;
+    border: 1.5px solid #4f46e5;
+    border-radius: 50%;
+    animation: sst-ripple 2.2s infinite ease-in-out;
+    z-index: 1;
+}
+@keyframes sst-ripple {
+    0% { width: 14px; height: 8px; opacity: 0.8; transform: scaleY(0.5); }
+    100% { width: 42px; height: 24px; opacity: 0; transform: scaleY(0.5); }
+}
+
+/* Windy-Style Picker Badge & Glows */
+.windy-picker-badge {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+}
+
+.windy-picker-bubble {
+    background: rgba(8, 20, 36, 0.95);
+    border: 1.5px solid var(--windy-color);
+    color: #ffffff;
+    padding: 3px 8px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+    font-family: 'Inter', sans-serif;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.6);
+    z-index: 3;
+    white-space: nowrap;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s ease;
+}
+
+.windy-picker-bubble:hover {
+    transform: scale(1.08);
+}
+
+.windy-picker-glow {
+    position: absolute;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--windy-color);
+    filter: blur(8px);
+    opacity: 0.35;
+    z-index: 1;
+    animation: windy-pulse-glow 2.5s infinite ease-in-out;
+    pointer-events: none;
+}
+
+.windy-picker-pulse {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1.5px solid var(--windy-color);
+    animation: windy-ping 2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+    z-index: 2;
+    opacity: 0;
+    pointer-events: none;
+}
+
+@keyframes windy-pulse-glow {
+    0%, 100% { transform: scale(1); opacity: 0.25; }
+    50% { transform: scale(1.3); opacity: 0.5; }
+}
+
+@keyframes windy-ping {
+    0% { transform: scale(0.6); opacity: 0.9; }
+    80% { opacity: 0.4; }
+    100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Weather beacon dot - center colored circle for layer overlays */
+.windy-beacon-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    position: relative;
+    z-index: 3;
+    transition: transform 0.2s ease;
+    background-color: var(--windy-color);
+}
+
+.windy-beacon-dot:hover {
+    transform: scale(1.25);
+}
+
+/* Wind direction arrow container */
+.windy-wind-arrow {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255, 255, 255, 0.35);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    background: rgba(6, 18, 36, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 3;
+}
+
+/* Layer button active state */
+.layer-btn-active {
+    background: rgba(0, 188, 212, 0.15) !important;
+    border-color: rgba(0, 188, 212, 0.8) !important;
+    color: #26C6DA !important;
+}
+
+/* ─── Station Reference Dot (small white marker at each AWS station) ─────────── */
+.station-ref-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #ffffff;
+    border: 1.5px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.9), 0 0 18px rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.station-ref-dot:hover {
+    transform: scale(2);
+    box-shadow: 0 0 14px rgba(38, 198, 218, 1), 0 0 28px rgba(38, 198, 218, 0.5);
+}
+
+/* ─── Windy-Style Canvas Gradient Overlay ────────────────────────────────────── */
+.weather-gradient-overlay {
+    image-rendering: auto;          /* Browser bilinear smooth upscale */
+    transition: opacity 0.35s ease;
+    mix-blend-mode: normal;
+}
+
+/* ─── Bottom Horizontal Layer Bar (Windy-style) ───────────────────────────────── */
+#map-layers-panel .layer-btn {
+    position: relative;
+    cursor: pointer;
+    border-radius: 10px;
+    transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#map-layers-panel .layer-btn::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 50%;
+    transform: translateX(-50%) scaleX(0);
+    width: 60%;
+    height: 2px;
+    background: #26C6DA;
+    border-radius: 2px;
+    transition: transform 0.2s ease;
+}
+
+#map-layers-panel .layer-btn:hover::after {
+    transform: translateX(-50%) scaleX(1);
+}
+
+/* ─── Custom Leaflet Tooltip (station hover) ─────────────────────────────────── */
+.custom-leaflet-tooltip {
+    background: rgba(8, 20, 36, 0.96) !important;
+    border: 1px solid rgba(38, 198, 218, 0.4) !important;
+    border-radius: 8px !important;
+    color: #e2e8f0 !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6) !important;
+    padding: 8px 10px !important;
+    font-family: 'Inter', sans-serif !important;
+    font-size: 11px !important;
+    white-space: nowrap !important;
+    pointer-events: none !important;
+}
+
+.custom-leaflet-tooltip::before {
+    border-top-color: rgba(38, 198, 218, 0.4) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   R.O.O.K Logo Image + Fullform Animated Text
+   ═══════════════════════════════════════════════════════════ */
+
+/* Logo image — subtle entrance + periodic shimmer */
+@keyframes logo-enter {
+    0%   { opacity: 0; transform: scale(0.88) translateY(-6px); filter: brightness(1.5) blur(4px); }
+    60%  { opacity: 1; filter: brightness(1.1) blur(0px); }
+    100% { transform: scale(1) translateY(0); filter: brightness(1) blur(0); }
+}
+
+@keyframes logo-shimmer {
+    0%, 100% { filter: drop-shadow(0 0 6px rgba(255,255,255,0.08)) brightness(1); }
+    50%       { filter: drop-shadow(0 0 14px rgba(200,220,255,0.28)) brightness(1.08); }
+}
+
+.rook-logo-img {
+    animation:
+        logo-enter   0.7s cubic-bezier(0.22, 1, 0.36, 1) both,
+        logo-shimmer 4s   ease-in-out 1s infinite;
+    cursor: default;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* Full-form container */
+@keyframes fullform-fadein {
+    0%   { opacity: 0; transform: translateY(4px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+.rook-fullform-text {
+    color: #cbd5e1;
+    letter-spacing: 0.14em;
+    animation: fullform-fadein 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both;
+    display: block;
+}
