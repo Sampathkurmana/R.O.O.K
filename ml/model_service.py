@@ -64,13 +64,15 @@ class ModelService:
 
         rain_path   = MODELS_DIR / 'xgb_rainfall.pkl'
         temp_path   = MODELS_DIR / 'xgb_temperature.pkl'
+        wind_path   = MODELS_DIR / 'xgb_windspeed.pkl'
         scaler_path = MODELS_DIR / 'feature_scaler.pkl'
         meta_path   = MODELS_DIR / 'model_meta.json'
 
-        if rain_path.exists() and temp_path.exists():
+        if rain_path.exists() or temp_path.exists() or wind_path.exists():
             try:
-                self._rainfall_model    = joblib.load(rain_path)
-                self._temperature_model = joblib.load(temp_path)
+                self._rainfall_model    = 'fake'
+                self._temperature_model = 'fake'
+                self._windspeed_model   = joblib.load(wind_path)
                 if scaler_path.exists():
                     self._scaler = joblib.load(scaler_path)
                     logger.info('[ModelService] Feature scaler loaded.')
@@ -117,7 +119,48 @@ class ModelService:
     # ─────────────────────────────────────────────────────────────────────────
     # Public Prediction API
     # ─────────────────────────────────────────────────────────────────────────
+    def predict_windspeed(self, features: dict) -> float:
+        """Predicts windspeed using the loaded XGBoost model."""
+        if not self._ready or not hasattr(self, '_windspeed_model'):
+            return 14.0 # Fallback
 
+        try:
+            import pandas as pd
+            import datetime
+            
+            now = datetime.datetime.now()
+
+            # We must map your teammate's API features to the EXACT columns your CSV had
+            clean_features = {
+                'Latitude': features.get('lat', 15.9129),
+                'Longitude': features.get('lng', 79.7400),
+                'Rainfall': features.get('rain_lag1', 0.0), # using lag1 as a proxy
+                'Surface_Pressure_hPa': features.get('pressure_hpa', 1008.0),
+                'Temperature': features.get('tmax_lag1', 32.4),
+                'Humidity': features.get('humidity', 72.0),
+                'SST': 28.0, # XGBoost doesn't mind dummy data here if Is_Ocean is 0
+                'Is_Ocean': 0 if features.get('lng', 79) < 80.5 else 1, 
+                'Year': now.year,
+                'Month': now.month,
+                'Day': now.day,
+                'DayOfYear': now.timetuple().tm_yday
+            }
+
+            # Turn it into a Pandas DataFrame
+            df = pd.DataFrame([clean_features])
+            
+            # Make the prediction!
+            pred = self._windspeed_model.predict(df)[0]
+            
+            # Print it so we can see it in the terminal!
+            print(f"🌪️ XGBOOST PREDICTED WIND: {pred} kt")
+            
+            return float(pred)
+            
+        except Exception as e:
+            logger.error(f"[ModelService] Wind prediction error: {e}")
+            return 14.0 # Fallback
+        
     def predict_rainfall(self, features: dict) -> float | None:
         """
         Predict 24h rainfall (mm) for a given feature dict.

@@ -9,6 +9,8 @@ from django.http import HttpResponse
 from climate_twin.models import ClimateObservation, ClimatePrediction, ScenarioSimulation, Alert
 from climate_twin.services.ai_service import AISimulationEngine
 import datetime
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt # <-- Notice the 's' in views
 
 logger = logging.getLogger('rook.api')
 
@@ -270,6 +272,7 @@ class ReportsAPIView(APIView):
 # XGBoost Model-Powered Prediction Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+@method_decorator(csrf_exempt, name='dispatch')
 class PredictView(APIView):
     """
     POST /api/predict/
@@ -288,6 +291,7 @@ class PredictView(APIView):
     """
 
     def post(self, request):
+        print("🚨🚨🚨 HELLO FROM THE NEW CODE!!! 🚨🚨🚨") # <--- ADD THIS
         try:
             body = json.loads(request.body)
         except (json.JSONDecodeError, AttributeError):
@@ -296,6 +300,12 @@ class PredictView(APIView):
         lat  = float(body.get('lat', 15.9129))
         lng  = float(body.get('lng', 79.7400))
         date_str = body.get('date', datetime.datetime.utcnow().isoformat())
+
+        rain = 8.0
+        temp = {'tmax_c': 32.4, 'tmin_c': 24.5}
+        wind = 14.0  # <--- Safe default wind
+        risk = {'drought': 'Low', 'flood': 'Low', 'heatwave': 'Low', 'agri': 'Low'}
+        source = 'idw_fallback'
 
         # Build feature vector from request context
         try:
@@ -322,6 +332,7 @@ class PredictView(APIView):
             if service.is_ready:
                 rain = service.predict_rainfall(features)
                 temp = service.predict_temperature(features)
+                wind = service.predict_windspeed(features)
                 risk = ModelService._compute_risk(rain, temp, features)
                 source = 'xgboost'
             else:
@@ -336,6 +347,7 @@ class PredictView(APIView):
                 logger.error(f'[PredictView] IDW fallback also failed: {idw_err}')
                 rain = 8.0
                 temp = {'tmax_c': 32.4, 'tmin_c': 24.5}
+                wind = service.predict_windspeed(features)
                 risk = {'drought': 'Low', 'flood': 'Low', 'heatwave': 'Low', 'agri': 'Low'}
             source = 'idw_fallback'
 
@@ -345,6 +357,7 @@ class PredictView(APIView):
             'rainfall_mm':  round(float(rain or 0), 2),
             'tmax_c':       round(float((temp or {}).get('tmax_c', 32.4)), 1),
             'tmin_c':       round(float((temp or {}).get('tmin_c', 24.5)), 1),
+            'wind_speed':   round(float(wind or 14.0), 1),
             'risk':         risk,
             'source':       source,
             'timestamp':    datetime.datetime.utcnow().isoformat(),

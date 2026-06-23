@@ -6,10 +6,10 @@ const AppState = {
     activeTimeline: 'present', // 'past', 'present', 'future'
     activeLayers: {
         satellite: true,
-        rainfall: true,
+        rainfall: false,
         temperature: false,
         humidity: false,
-        wind: false,
+        wind: true,
         pressure: false
     },
     simulator: {
@@ -222,7 +222,8 @@ function initMap() {
     });
 
     // ── queryLocation: calls /api/predict/ and updates the sidebar ────────────
-    window.queryLocation = async function(lat, lng) {
+    // ── queryLocation: calls /api/predict/ and updates the sidebar ────────────
+    window.queryLocation = async function(lat, lng) {   
         const nameEl     = document.getElementById("clicked-area-name");
         const tempEl     = document.getElementById("clicked-temp");
         const rainEl     = document.getElementById("clicked-rain");
@@ -230,14 +231,14 @@ function initMap() {
         const pressureEl = document.getElementById("clicked-pressure");
         const badge      = document.getElementById('model-source-badge');
 
-        // Find nearest station name for display
-        let nearestName = 'Andhra Pradesh';
+        // PROPERLY DEFINE nearSt SO IT DOESN'T CRASH
+        let nearSt = DISTRICT_STATIONS[0];
         let minDist = Infinity;
         DISTRICT_STATIONS.forEach(s => {
             const d = Math.hypot(s.coords[0] - lat, s.coords[1] - lng);
-            if (d < minDist) { minDist = d; nearestName = 'Near ' + s.name; }
+            if (d < minDist) { minDist = d; nearSt = s; }
         });
-        if (nameEl) nameEl.innerText = nearestName;
+        if (nameEl) nameEl.innerText = nearSt.name;
 
         try {
             const resp = await fetch('/api/predict/', {
@@ -250,24 +251,45 @@ function initMap() {
             });
             const data = await resp.json();
 
+            // UPDATE UI WITH AI DATA
             if (tempEl)     tempEl.innerText = `${data.tmax_c} °C`;
             if (rainEl)     rainEl.innerText = `${data.rainfall_mm} mm`;
-            // Wind/pressure from nearest station (not yet in model output)
-            const nearSt = DISTRICT_STATIONS.reduce((a, b) =>
-                Math.hypot(a.coords[0]-lat, a.coords[1]-lng) < Math.hypot(b.coords[0]-lat, b.coords[1]-lng) ? a : b
-            );
-            if (windElLoc)  windElLoc.innerText = `${nearSt.wind} kt ${nearSt.dir}`;
             if (pressureEl) pressureEl.innerText = `${nearSt.pressure} hPa`;
+            if (windElLoc)  windElLoc.innerText = `${data.wind_speed} kt ${nearSt.dir}`;
 
-            // Update home KPIs
+            // UPDATE KPIs
             animateValue('kpi-temp', data.tmax_c, ' °C');
             animateValue('kpi-rain', data.rainfall_mm, ' mm');
             animateValue('kpi-humidity', nearSt.humidity, '%');
-            animateValue('kpi-wind', nearSt.wind, ' kt');
+            animateValue('kpi-wind', data.wind_speed, ' kt');
+            
             const dirEl = document.getElementById('kpi-wind-dir');
             if (dirEl) dirEl.innerText = nearSt.dir;
 
-            // Update model source badge
+            const currentWindEl = document.getElementById("current-cond-wind");
+            if (currentWindEl) {
+                currentWindEl.innerHTML = `${data.wind_speed} kt <span class="text-[9px] text-cyan-400 font-normal">${nearSt.dir}</span>`;
+            }
+
+            if (AppState.map) {
+                AppState.map.eachLayer((layer) => {
+                    // Check if the layer is a marker and has our custom property
+                    if (layer.stationName === nearSt.name) {
+                        const newTooltipHTML = `
+                            <div class="bg-navy-800 border border-slate-700 p-2 rounded text-xs text-slate-200">
+                                <p class="font-bold font-display text-cyan-400">${nearSt.name}</p>
+                                <p>Temp: ${data.tmax_c}°C</p>
+                                <p>Rain: ${data.rainfall_mm} mm</p>
+                                <p>Wind: ${data.wind_speed} kt ${nearSt.dir}</p>
+                                <p>Pressure: ${nearSt.pressure} hPa</p>
+                            </div>
+                        `;
+                        // Update the leaflet tooltip
+                        layer.setTooltipContent(newTooltipHTML);
+                    }
+                });
+            }
+
             if (badge) {
                 if (data.source === 'xgboost') {
                     badge.textContent = '⚡ XGBoost Model';
@@ -279,8 +301,8 @@ function initMap() {
             }
 
         } catch (err) {
-            console.warn('[R.O.O.K] Predict API failed, using deterministic mock:', err);
-            // Deterministic fallback (coordinate-seeded, never undefined)
+            console.warn('[R.O.O.K] Predict API failed:', err);
+            // Deterministic fallback
             const tempVal = parseFloat((28.5 + (Math.sin(lat * 12) * Math.cos(lng * 8) * 4.5)).toFixed(1));
             const rainVal = parseFloat(Math.max(0, (8.0 + (Math.cos(lat * 9) * Math.sin(lng * 12) * 12.0))).toFixed(1));
             const windVal = Math.max(2, Math.round(14 + (Math.sin(lat + lng) * 8)));
@@ -379,7 +401,8 @@ function initMap() {
         });
 
         const marker = L.marker(station.coords, { icon: markerIcon }).addTo(AppState.map);
-        marker.bindTooltip(`
+        marker.stationName = station.name; // <--- Add this line!
+        /*marker.bindTooltip(`
             <div class="bg-navy-800 border border-slate-700 p-2 rounded text-xs text-slate-200">
                 <p class="font-bold font-display text-cyan-400">${station.name}</p>
                 <p>Temp: ${station.temp}°C</p>
@@ -390,16 +413,22 @@ function initMap() {
 
         marker.on('click', () => {
             selectDistrict(station);
+        });*/
+        bindDynamicAITooltip(marker, station);
+
+        marker.on('click', () => {
+            selectDistrict(station);
         });
     });
 }
 
 // Select District Station details
 function selectDistrict(station) {
+    console.log(`[R.O.O.K] District selected: ${station.name}`);
     AppState.selectedDistrict = station.name;
     document.getElementById("location-indicator").innerText = station.name;
     
-    // Update selected location query panel UI
+    // Update selected location query panel UI to loading state
     const nameEl = document.getElementById("clicked-area-name");
     const coordsEl = document.getElementById("clicked-coords");
     const tempEl = document.getElementById("clicked-temp");
@@ -409,9 +438,9 @@ function selectDistrict(station) {
     
     if (nameEl) nameEl.innerText = station.name;
     if (coordsEl) coordsEl.innerText = `${station.coords[0].toFixed(4)}° N, ${station.coords[1].toFixed(4)}° E`;
-    if (tempEl) tempEl.innerText = `${station.temp} °C`;
-    if (rainEl) rainEl.innerText = `${station.rain} mm`;
-    if (windElLoc) windElLoc.innerText = `${station.wind} kt ${station.dir}`;
+    if (tempEl) tempEl.innerText = `Fetching...`;
+    if (rainEl) rainEl.innerText = `Fetching...`;   
+    if (windElLoc) windElLoc.innerText = `Fetching AI...`; // FIXED! No undefined variables here!
     if (pressureEl) pressureEl.innerText = `${station.pressure} hPa`;
 
     // Draw temporary clicked marker pulse
@@ -433,35 +462,22 @@ function selectDistrict(station) {
     });
     AppState.clickedMarker = L.marker(station.coords, { icon: clickIcon }).addTo(AppState.map);
 
-    // Animate KPI Updates
-    animateValue("kpi-temp", station.temp, " °C");
-    animateValue("kpi-rain", station.rain, " mm");
-    animateValue("kpi-humidity", station.humidity, "%");
-    animateValue("kpi-wind", station.wind, " kt");
+    // Set KPIs to loading
+    const kpiWindEl = document.getElementById("kpi-wind");
+    if (kpiWindEl) kpiWindEl.innerText = "Loading...";
     const dirEl = document.getElementById("kpi-wind-dir");
     if (dirEl) dirEl.innerText = station.dir;
-
-    // Update bottom row Current Conditions values
-    animateValue("current-cond-rain", station.rain, " mm");
-    animateValue("current-cond-temp-max", (station.temp + 1.2), " °C");
-    animateValue("current-cond-temp-min", (station.temp - 6.5), " °C");
-    animateValue("current-cond-humidity", station.humidity, "%");
-    const windEl = document.getElementById("current-cond-wind");
-    if (windEl) {
-        windEl.innerHTML = `${station.wind} kt <span class="text-[9px] text-cyan-400 font-normal">${station.dir}</span>`;
-    }
     
     // Store location on district select so simulator can use it
     AppState.selectedLat = station.coords[0];
     AppState.selectedLng = station.coords[1];
 
-    // Zoom map closer (zoom level 10 is perfect for street level context)
+    // Zoom map closer
     AppState.map.setView(station.coords, 10, { animate: true, duration: 1.5 });
     
-    // Also query real prediction for this station
+    // Query real prediction for this station
     queryLocation(station.coords[0], station.coords[1]);
 }
-
 // Reset Map View to default
 function resetMapView() {
     AppState.selectedDistrict = "Andhra Pradesh";
@@ -1182,6 +1198,8 @@ function updateMapLayers(simulated = false) {
         ...s,
         temp: (s.temp * timeMult) + simTemp,
         rain: Math.max(0, s.rain * timeMult * (1.0 + simRain)),
+        wind: s.wind * timeMult,
+        pressure: s.pressure * timeMult,
         humidity: Math.min(100, Math.max(0, s.humidity + simHumidity))
     }));
 
@@ -1216,15 +1234,21 @@ function updateMapLayers(simulated = false) {
             iconAnchor: [4, 4]
         });
         const marker = L.marker(station.coords, { icon: dotIcon, interactive: true });
-        marker.bindTooltip(
-            `<div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
-                <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name}</p>
-                <p style="margin:2px 0;color:#e2e8f0">Temp: ${station.temp.toFixed(1)}°C &nbsp; Rain: ${station.rain.toFixed(1)}mm</p>
-                <p style="margin:2px 0;color:#e2e8f0">Wind: ${station.wind}kt ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
-                <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
-            </div>`,
-            { className: 'custom-leaflet-tooltip', direction: 'top', offset: [0, -6] }
-        );
+        // marker.bindTooltip(
+        //     `<div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
+        //         <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name}</p>
+        //         <p style="margin:2px 0;color:#e2e8f0">Temp: ${station.temp.toFixed(1)}°C &nbsp; Rain: ${station.rain.toFixed(1)}mm</p>
+        //         <p style="margin:2px 0;color:#e2e8f0">Wind: ${station.wind}kt ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
+        //         <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
+        //     </div>`,
+        //     { className: 'custom-leaflet-tooltip', direction: 'top', offset: [0, -6] }
+        // );
+
+        // ✅ REPLACE IT WITH THIS ✅
+        marker.stationName = station.name;
+        bindDynamicAITooltip(marker, station);
+        // ✅ END OF REPLACEMENT ✅
+
         marker.on('click', () => selectDistrict(station));
         stationsGroup.addLayer(marker);
     });
@@ -1402,4 +1426,44 @@ function getCookie(name) {
         }
     }
     return cookieValue;
+}
+
+// --- NEW DYNAMIC HOVER TOOLTIP FUNCTION ---
+function bindDynamicAITooltip(marker, station) {
+    // 1. Set an initial "Loading" tooltip
+    marker.bindTooltip(`
+        <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px; min-width: 140px;">
+            <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name}</p>
+            <p style="margin:2px 0;color:#94a3b8;font-style:italic;">Scanning atmosphere...</p>
+        </div>
+    `, { className: 'custom-leaflet-tooltip', direction: 'top', offset: [0, -6] });
+
+    // 2. When the mouse hovers, dynamically fetch the AI data!
+    marker.on('mouseover', async () => {
+        if (station.aiLoaded) return; // Only fetch once per station so we don't crash your server
+        
+        try {
+            const resp = await fetch('/api/predict/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ lat: station.coords[0], lng: station.coords[1], date: new Date().toISOString() })
+            });
+            const data = await resp.json();
+            
+            station.aiLoaded = true; // Mark as loaded
+            station.wind = data.wind_speed; // Save it permanently to the map data
+
+            // 3. Overwrite the tooltip instantly with the live XGBoost data
+            marker.setTooltipContent(`
+                <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
+                    <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name} <span style="color:#10b981;font-size:9px;">⚡ AI Sync</span></p>
+                    <p style="margin:2px 0;color:#e2e8f0">Temp: ${data.tmax_c.toFixed(1)}°C &nbsp; Rain: ${data.rainfall_mm.toFixed(1)}mm</p>
+                    <p style="margin:2px 0;color:#e2e8f0">Wind: ${data.wind_speed} kt ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
+                    <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
+                </div>
+            `);
+        } catch (err) {
+            console.error("AI Hover fetch failed", err);
+        }
+    });
 }
