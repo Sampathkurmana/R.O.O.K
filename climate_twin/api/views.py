@@ -11,48 +11,46 @@ from climate_twin.services.ai_service import AISimulationEngine
 import datetime
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt # <-- Notice the 's' in views
+import math
 
 logger = logging.getLogger('rook.api')
 
 class WeatherAPIView(APIView):
-    """
-    Returns current weather conditions for Andhra Pradesh pilot regions.
-    """
     def get(self, request):
-        # Default real-time monitoring data
-        data = {
-            "location": "Andhra Pradesh",
-            "region_code": "AP",
+        # 1. Catch the coordinates your frontend is sending
+        lat_str = request.GET.get('lat')
+        lng_str = request.GET.get('lng')
+
+        if lat_str and lng_str:
+            lat = float(lat_str)
+            lng = float(lng_str)
+            
+            # 2. Return UNIQUE API data based on the location
+            # (Swap this out for your real IMD/GFS API fetch later)
+            unique_temp = round(28.0 + (math.sin(lat * 10) * 4.5), 1)
+            unique_rain = round(max(0, 10.0 + (math.cos(lng * 10) * 8.0)), 1)
+            unique_wind = int(max(5, 14 + (math.sin(lat + lng) * 8)))
+            
+            return Response({
+                "current": {
+                    "temperature": unique_temp,
+                    "rainfall": unique_rain,
+                    "humidity": int(min(100, 60 + unique_temp * 0.8)),
+                    "wind_speed": unique_wind,
+                    "wind_direction": "SW"
+                }
+            })
+
+        # 3. Default fallback if no coordinates are sent
+        return Response({
             "current": {
                 "temperature": 32.4,
-                "temperature_change": 2.3, # compared to yesterday
                 "rainfall": 12.4,
-                "rainfall_change": -8.6,
                 "humidity": 78,
-                "humidity_change": 5,
                 "wind_speed": 18,
-                "wind_direction": "SW",
-                "pressure": 1008, # hPa
-                "visibility": 9.2, # km
-                "last_updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            },
-            "districts": [
-                {"name": "Anantapur", "temp": 34.2, "rain": 2.1, "humidity": 55, "risk": "Medium"},
-                {"name": "Chittoor", "temp": 32.0, "rain": 4.5, "humidity": 68, "risk": "Low"},
-                {"name": "East Godavari", "temp": 31.8, "rain": 22.4, "humidity": 88, "risk": "High"},
-                {"name": "Guntur", "temp": 33.5, "rain": 11.2, "humidity": 75, "risk": "Medium"},
-                {"name": "Krishna", "temp": 32.9, "rain": 14.8, "humidity": 82, "risk": "High"},
-                {"name": "Kurnool", "temp": 35.1, "rain": 1.0, "humidity": 52, "risk": "Medium"},
-                {"name": "Prakasam", "temp": 33.8, "rain": 3.2, "humidity": 64, "risk": "Medium"},
-                {"name": "Srikakulam", "temp": 30.5, "rain": 28.6, "humidity": 92, "risk": "High"},
-                {"name": "Nellore", "temp": 33.0, "rain": 5.1, "humidity": 70, "risk": "Low"},
-                {"name": "Visakhapatnam", "temp": 31.2, "rain": 18.5, "humidity": 85, "risk": "High"},
-                {"name": "Vizianagaram", "temp": 30.9, "rain": 21.0, "humidity": 89, "risk": "High"},
-                {"name": "West Godavari", "temp": 32.1, "rain": 19.3, "humidity": 86, "risk": "High"},
-                {"name": "YSR Kadapa", "temp": 34.6, "rain": 1.8, "humidity": 58, "risk": "Medium"}
-            ]
-        }
-        return Response(data)
+                "wind_direction": "SW"
+            }
+        })
 
 class ForecastAPIView(APIView):
     """

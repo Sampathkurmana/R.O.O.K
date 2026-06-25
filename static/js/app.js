@@ -240,6 +240,59 @@ function initMap() {
         });
         if (nameEl) nameEl.innerText = nearSt.name;
 
+        // 🛑 THE FIX: Check if we are on the Home Dashboard
+        /*if (AppState.activePanel === 'dashboard') {
+            // Update Sidebar text (even if it's hidden, keep the DOM synced)
+            if (tempEl)     tempEl.innerText = `${nearSt.temp} °C`;
+            if (rainEl)     rainEl.innerText = `${nearSt.rain} mm`;
+            if (pressureEl) pressureEl.innerText = `${nearSt.pressure} hPa`;
+            if (windElLoc)  windElLoc.innerText = `${nearSt.wind} kt ${nearSt.dir}`;
+
+            // Update the Dashboard KPI Cards with REAL API DATA
+            animateValue('kpi-temp', nearSt.temp, ' °C');
+            animateValue('kpi-rain', nearSt.rain, ' mm');
+            animateValue('kpi-humidity', nearSt.humidity, '%');
+            animateValue('kpi-wind', nearSt.wind, ' kt');
+            
+            const dirEl = document.getElementById('kpi-wind-dir');
+            if (dirEl) dirEl.innerText = nearSt.dir;
+
+            return; // 🛑 Kill the function here so it doesn't fetch AI data!
+        }*/
+
+        // 🛑 HOME DASHBOARD LOGIC: Fetch actual API data on click
+        if (AppState.activePanel === 'dashboard') {
+            try {
+                // Fetch real live data for the clicked coordinates
+                const resp = await fetch(`/api/weather/?lat=${lat}&lng=${lng}`);
+                
+                // If backend throws a 404/500, jump to the catch block
+                if (!resp.ok) throw new Error("API Route failed"); 
+                
+                const data = await resp.json();
+
+                // Update Sidebar Query Info
+                if (tempEl)     tempEl.innerText = `${data.current.temperature} °C`;
+                if (rainEl)     rainEl.innerText = `${data.current.rainfall} mm`;
+                if (pressureEl) pressureEl.innerText = `${nearSt.pressure} hPa`; // fallback if pressure isn't in API
+                if (windElLoc)  windElLoc.innerText = `${data.current.wind_speed} kmph ${data.current.wind_direction}`;
+
+                // Update the Dashboard KPI Cards
+                animateValue('kpi-temp', data.current.temperature, ' °C');
+                animateValue('kpi-rain', data.current.rainfall, ' mm');
+                animateValue('kpi-humidity', data.current.humidity, '%');
+                animateValue('kpi-wind', data.current.wind_speed, ' kmph');
+                
+                const dirEl = document.getElementById('kpi-wind-dir');
+                if (dirEl) dirEl.innerText = data.current.wind_direction;
+
+            } catch (err) {
+                console.warn("[R.O.O.K] API fetch failed on click. Is Django WeatherAPIView ready?", err);
+                // Your fallback is already handled smoothly if you keep the rest of your original try/catch intact!
+            }
+            return; // 🛑 Kill the function here so it doesn't fetch AI data!
+        }
+
         try {
             const resp = await fetch('/api/predict/', {
                 method: 'POST',
@@ -250,25 +303,25 @@ function initMap() {
                 body: JSON.stringify({ lat, lng, date: new Date().toISOString() })
             });
             const data = await resp.json();
-
+            //data.wind_speed = Math.round(data.wind_speed * 3.6);
             // UPDATE UI WITH AI DATA
             if (tempEl)     tempEl.innerText = `${data.tmax_c} °C`;
             if (rainEl)     rainEl.innerText = `${data.rainfall_mm} mm`;
             if (pressureEl) pressureEl.innerText = `${nearSt.pressure} hPa`;
-            if (windElLoc)  windElLoc.innerText = `${data.wind_speed} kt ${nearSt.dir}`;
+            if (windElLoc)  windElLoc.innerText = `${data.wind_speed} kmph ${nearSt.dir}`;
 
             // UPDATE KPIs
             animateValue('kpi-temp', data.tmax_c, ' °C');
             animateValue('kpi-rain', data.rainfall_mm, ' mm');
             animateValue('kpi-humidity', nearSt.humidity, '%');
-            animateValue('kpi-wind', data.wind_speed, ' kt');
+            animateValue('kpi-wind', data.wind_speed, ' kmph');
             
             const dirEl = document.getElementById('kpi-wind-dir');
             if (dirEl) dirEl.innerText = nearSt.dir;
 
             const currentWindEl = document.getElementById("current-cond-wind");
             if (currentWindEl) {
-                currentWindEl.innerHTML = `${data.wind_speed} kt <span class="text-[9px] text-cyan-400 font-normal">${nearSt.dir}</span>`;
+                currentWindEl.innerHTML = `${data.wind_speed} kmph <span class="text-[9px] text-cyan-400 font-normal">${nearSt.dir}</span>`;
             }
 
             if (AppState.map) {
@@ -280,7 +333,7 @@ function initMap() {
                                 <p class="font-bold font-display text-cyan-400">${nearSt.name}</p>
                                 <p>Temp: ${data.tmax_c}°C</p>
                                 <p>Rain: ${data.rainfall_mm} mm</p>
-                                <p>Wind: ${data.wind_speed} kt ${nearSt.dir}</p>
+                                <p>Wind: ${data.wind_speed} kmph ${nearSt.dir}</p>
                                 <p>Pressure: ${nearSt.pressure} hPa</p>
                             </div>
                         `;
@@ -312,12 +365,12 @@ function initMap() {
 
             if (tempEl)     tempEl.innerText = `${tempVal} °C`;
             if (rainEl)     rainEl.innerText = `${rainVal} mm`;
-            if (windElLoc)  windElLoc.innerText = `${windVal} kt ${windDir}`;
+            if (windElLoc)  windElLoc.innerText = `${windVal} kmph ${windDir}`;
             if (pressureEl) pressureEl.innerText = `${pressureVal} hPa`;
             animateValue('kpi-temp', tempVal, ' °C');
             animateValue('kpi-rain', rainVal, ' mm');
             animateValue('kpi-humidity', Math.min(100, Math.round(55 + tempVal * 0.5)), '%');
-            animateValue('kpi-wind', windVal, ' kt');
+            animateValue('kpi-wind', windVal, ' kmph');
             const dirEl = document.getElementById('kpi-wind-dir');
             if (dirEl) dirEl.innerText = windDir;
             if (badge) { badge.textContent = '⚠️ Offline Mock'; badge.className = 'text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-slate-700/40 text-slate-400 border border-slate-600/30'; }
@@ -834,7 +887,7 @@ function fetchWeatherData() {
             document.getElementById("kpi-temp").innerText = data.current.temperature + " °C";
             document.getElementById("kpi-rain").innerText = data.current.rainfall + " mm";
             document.getElementById("kpi-humidity").innerText = data.current.humidity + "%";
-            document.getElementById("kpi-wind").innerText = data.current.wind_speed + " kt";
+            document.getElementById("kpi-wind").innerText = data.current.wind_speed + " kmph";
             document.getElementById("kpi-wind-dir").innerText = data.current.wind_direction;
 
             // Update Analytics Current Conditions defaults
@@ -1430,7 +1483,7 @@ function getCookie(name) {
 
 // --- NEW DYNAMIC HOVER TOOLTIP FUNCTION ---
 function bindDynamicAITooltip(marker, station) {
-    // 1. Set an initial "Loading" tooltip
+    // 1. Initial scanning tooltip
     marker.bindTooltip(`
         <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px; min-width: 140px;">
             <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name}</p>
@@ -1438,10 +1491,56 @@ function bindDynamicAITooltip(marker, station) {
         </div>
     `, { className: 'custom-leaflet-tooltip', direction: 'top', offset: [0, -6] });
 
-    // 2. When the mouse hovers, dynamically fetch the AI data!
+    // 2. Logic gate on hover
     marker.on('mouseover', async () => {
-        if (station.aiLoaded) return; // Only fetch once per station so we don't crash your server
-        
+        const aiPanels = ['weather', 'forecast', 'analytics'];
+        const isAIPanel = aiPanels.includes(AppState.activePanel);
+
+        // HOME (Dashboard) or other non-AI panels: Use original raw data!
+        /*if (!isAIPanel) {
+            marker.setTooltipContent(`
+                <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
+                    <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name} <span style="color:#eab308;font-size:9px;">📡 Live API</span></p>
+                    <p style="margin:2px 0;color:#e2e8f0">Temp: ${station.temp.toFixed(1)}°C &nbsp; Rain: ${station.rain.toFixed(1)}mm</p>
+                    <p style="margin:2px 0;color:#e2e8f0">Wind: ${station.wind} kt ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
+                    <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
+                </div>
+            `);
+            return; // Stop execution here, don't fetch AI
+        }*/
+
+        // 🏠 HOME DASHBOARD: Fetch Real API Data
+        if (!isAIPanel) {
+            // Check cache first so we don't spam the server
+            if (station.apiLoaded && station.apiData) {
+                applyAPITooltip(marker, station.apiData, station);
+                return;
+            }
+            
+            try {
+                // Pass coords to your Django backend using query params
+                const resp = await fetch(`/api/weather/?lat=${station.coords[0]}&lng=${station.coords[1]}`);
+                const data = await resp.json();
+                
+                // Cache it
+                station.apiLoaded = true;
+                station.apiData = data;
+                applyAPITooltip(marker, data, station);
+            } catch (err) {
+                console.warn("[R.O.O.K] Live API fetch failed, falling back to static:", err);
+                // Fallback to static array data if your backend crashes
+                applyAPITooltip(marker, { current: { temperature: station.temp, rainfall: station.rain, wind_speed: station.wind, wind_direction: station.dir, humidity: station.humidity } }, station);
+            }
+            return;
+        }
+
+        // AI PANELS: Check cache
+        if (station.aiLoaded && station.aiData) {
+            applyAITooltip(marker, station.aiData, station);
+            return;
+        }
+
+        // Fetch new AI Data
         try {
             const resp = await fetch('/api/predict/', {
                 method: 'POST',
@@ -1450,20 +1549,38 @@ function bindDynamicAITooltip(marker, station) {
             });
             const data = await resp.json();
             
-            station.aiLoaded = true; // Mark as loaded
-            station.wind = data.wind_speed; // Save it permanently to the map data
+            // CACHE IT, BUT DO NOT MUTATE BASE STATION DATA 🚫
+            station.aiLoaded = true; 
+            station.aiData = data; 
 
-            // 3. Overwrite the tooltip instantly with the live XGBoost data
-            marker.setTooltipContent(`
-                <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
-                    <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name} <span style="color:#10b981;font-size:9px;">⚡ AI Sync</span></p>
-                    <p style="margin:2px 0;color:#e2e8f0">Temp: ${data.tmax_c.toFixed(1)}°C &nbsp; Rain: ${data.rainfall_mm.toFixed(1)}mm</p>
-                    <p style="margin:2px 0;color:#e2e8f0">Wind: ${data.wind_speed} kt ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
-                    <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
-                </div>
-            `);
+            // Render it
+            applyAITooltip(marker, data, station);
         } catch (err) {
             console.error("AI Hover fetch failed", err);
         }
     });
+}
+
+// Helper for LIVE API Tooltip
+function applyAPITooltip(marker, data, station) {
+    marker.setTooltipContent(`
+        <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
+            <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name} <span style="color:#eab308;font-size:9px;">📡 Live API</span></p>
+            <p style="margin:2px 0;color:#e2e8f0">Temp: ${data.current.temperature}°C &nbsp; Rain: ${data.current.rainfall}mm</p>
+            <p style="margin:2px 0;color:#e2e8f0">Wind: ${data.current.wind_speed} kmph ${data.current.wind_direction} &nbsp; Hum: ${data.current.humidity}%</p>
+            <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
+        </div>
+    `);
+}
+
+// Helper to keep code clean fr
+function applyAITooltip(marker, data, station) {
+    marker.setTooltipContent(`
+        <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
+            <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name} <span style="color:#10b981;font-size:9px;">⚡ AI Sync</span></p>
+            <p style="margin:2px 0;color:#e2e8f0">Temp: ${data.tmax_c.toFixed(1)}°C &nbsp; Rain: ${data.rainfall_mm.toFixed(1)}mm</p>
+            <p style="margin:2px 0;color:#e2e8f0">Wind: ${data.wind_speed} kmph ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
+            <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
+        </div>
+    `);
 }
