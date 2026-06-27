@@ -685,3 +685,274 @@ input[type="range"]::-webkit-slider-thumb:hover {
     animation: fullform-fadein 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.5s both;
     display: block;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   New Layout and Feature Styles: Sidebar, Split Map, Playback, Hazards
+   ═══════════════════════════════════════════════════════════ */
+
+/* Sidebar Collapse Mode Overrides */
+#app-container.sidebar-collapsed aside#sidebar {
+    width: 72px !important;
+}
+
+#app-container.sidebar-collapsed header#top-header {
+    left: 88px !important;
+}
+
+#app-container.sidebar-collapsed #sidebar-logo-img {
+    display: none !important;
+}
+
+#app-container.sidebar-collapsed #sidebar-logo-compact {
+    display: block !important;
+}
+
+#app-container.sidebar-collapsed .sidebar-text {
+    display: none !important;
+}
+
+#app-container.sidebar-collapsed #sidebar-menu a {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+}
+
+#app-container.sidebar-collapsed #sidebar-footer {
+    justify-content: center;
+}
+
+/* Split Map Layout */
+#map-container {
+    display: flex;
+    width: 100%;
+    height: 100%;
+}
+
+#map-container.split-active #map-left {
+    width: 50% !important;
+}
+
+#map-container.split-active #map-right {
+    width: 50% !important;
+    display: block !important;
+}
+
+/* Playback Panel Overrides and Centering */
+#playback-panel-wrapper {
+    bottom: 16px;
+    left: 272px; /* 256px sidebar width + 16px margin */
+    right: 400px; /* 384px right panel width + 16px margin */
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+#app-container.sidebar-collapsed #playback-panel-wrapper {
+    left: 88px !important; /* 72px collapsed sidebar width + 16px margin */
+}
+
+#app-container.playback-active #map-legend {
+    bottom: 196px !important;
+}
+
+.playback-month-dot {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.playback-month-dot.active {
+    background-color: var(--neon-cyan) !important;
+    border-color: #ffffff !important;
+    box-shadow: 0 0 10px var(--neon-cyan), 0 0 20px rgba(0, 210, 255, 0.4);
+    transform: scale(1.3);
+}
+
+.playback-month-dot.passed {
+    background-color: rgba(0, 210, 255, 0.3) !important;
+    border-color: var(--neon-cyan) !important;
+}
+
+.pb-speed-btn.active {
+    background-color: var(--neon-cyan) !important;
+    color: #081420 !important;
+}
+
+/* Scenario presetting */
+.scenario-btn {
+    transition: all 0.2s ease;
+}
+.scenario-btn:active {
+    transform: scale(0.96);
+}
+
+/* Cyclone visual overlays */
+.cyclone-forecast-cone {
+    fill: rgba(239, 68, 68, 0.06) !important;
+    stroke: rgba(239, 68, 68, 0.3) !important;
+    stroke-width: 1.5;
+    stroke-dasharray: 4, 4;
+}
+
+.cyclone-storm-track {
+    stroke: #ff5252 !important;
+    stroke-width: 2.5;
+    stroke-dasharray: 6, 4;
+}
+
+/* Wind Vectors & Particle flow styling */
+.wind-particle-canvas {
+    pointer-events: none;
+    mix-blend-mode: screen;
+}
+
+/* Animated Pulse Indicators for Alert Areas */
+@keyframes alert-pulse {
+    0% { fill-opacity: 0.15; stroke-opacity: 0.8; }
+    50% { fill-opacity: 0.4; stroke-opacity: 1; stroke-width: 3.5; }
+    100% { fill-opacity: 0.15; stroke-opacity: 0.8; }
+}
+
+.flood-pulsing-district {
+    animation: alert-pulse 2s infinite ease-in-out;
+    fill: #3b82f6;
+    stroke: #2563eb;
+    stroke-width: 2;
+}
+
+.drought-pulsing-district {
+    animation: alert-pulse 2.5s infinite ease-in-out;
+    fill: #b45309;
+    stroke: #d97706;
+    stroke-width: 2;
+}
+
+.heatwave-pulsing-district {
+    animation: alert-pulse 1.8s infinite ease-in-out;
+    fill: #ef4444;
+    stroke: #dc2626;
+    stroke-width: 2;
+}
+
+/* Climate Time Navigation Styling */
+.time-mode-btn {
+    transition: all 0.2s ease;
+}
+
+.time-mode-btn:hover:not(.bg-cyan-500) {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+}
+
+.pb-speed-btn {
+    transition: all 0.2s ease;
+}
+
+.pb-speed-btn:hover:not(.bg-cyan-500) {
+    background: rgba(255, 255, 255, 0.05);
+    color: #ffffff;
+}
+
+.timeline-hour-dot .dot-core {
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.timeline-hour-dot:hover .dot-core {
+    border-color: var(--neon-cyan);
+    color: #ffffff;
+    box-shadow: 0 0 8px rgba(0, 210, 255, 0.4);
+}
+
+.timeline-hour-dot.active .dot-core {
+    background: var(--neon-cyan) !important;
+    border-color: var(--neon-cyan) !important;
+    color: #081420 !important;
+    box-shadow: 0 0 12px var(--neon-cyan);
+    transform: scale(1.15);
+}
+
+.timeline-hour-dot.passed .dot-core {
+    border-color: rgba(0, 210, 255, 0.4);
+    color: rgba(0, 210, 255, 0.7);
+}
+
+#timeline-caret {
+    filter: drop-shadow(0 0 4px var(--neon-cyan));
+    animation: bounce-caret 1s infinite alternate ease-in-out;
+}
+
+@keyframes bounce-caret {
+    from { transform: translateX(-50%) translateY(0); }
+    to { transform: translateX(-50%) translateY(-2px); }
+}
+
+/* Radar precipitation scan animation styling */
+@keyframes radar-sweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.radar-scan-line {
+    width: 100%;
+    height: 100%;
+    background: conic-gradient(from 0deg, rgba(0, 210, 255, 0.15) 0%, rgba(0, 210, 255, 0) 50%);
+    animation: radar-sweep 4s linear infinite;
+    transform-origin: center;
+}
+
+/* Glowing wind stream canvas blending */
+.wind-overlay-canvas {
+    pointer-events: none;
+    mix-blend-mode: screen;
+    opacity: 0.85;
+    z-index: 400;
+}
+
+/* Cyclone Animated Spiral Layer styling */
+.cyclone-eye-core {
+    fill: rgba(239, 68, 68, 0.45);
+    stroke: #ef4444;
+    stroke-width: 1.5;
+    filter: drop-shadow(0 0 4px #ef4444);
+}
+
+.cyclone-dot-cyan {
+    fill: #00d2ff;
+    opacity: 0.9;
+    filter: drop-shadow(0 0 2px #00d2ff);
+}
+
+.cyclone-dot-red {
+    fill: #ff3b30;
+    opacity: 0.95;
+    filter: drop-shadow(0 0 2px #ff3b30);
+}
+
+.cyclone-arm-1 {
+    transform-origin: 50px 50px;
+    animation: cyclone-spin 7s linear infinite;
+}
+
+.cyclone-arm-2 {
+    transform-origin: 50px 50px;
+    animation: cyclone-spin-reverse 5s linear infinite;
+}
+
+.cyclone-ring-mid {
+    transform-origin: 50px 50px;
+    animation: cyclone-spin 4s linear infinite;
+}
+
+.cyclone-ring-inner {
+    transform-origin: 50px 50px;
+    animation: cyclone-spin-reverse 2.2s linear infinite;
+}
+
+@keyframes cyclone-spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes cyclone-spin-reverse {
+    from { transform: rotate(360deg); }
+    to { transform: rotate(0deg); }
+}
+
+

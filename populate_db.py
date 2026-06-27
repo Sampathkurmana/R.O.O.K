@@ -6,23 +6,23 @@ import random
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'climate_twin.settings')
 django.setup()
 
-from climate_twin.models import ClimateObservation, ClimatePrediction, Alert
+from climate_twin.models import State, District, ClimateObservation, ClimatePrediction, Alert
 
 # District stations list with coordinate mappings
 DISTRICT_STATIONS = [
-    { "name": "Anantapur", "lat": 14.6819, "lng": 77.6006, "temp": 34.2, "rain": 2.1, "hum": 55 },
-    { "name": "Chittoor", "lat": 13.2172, "lng": 79.1003, "temp": 32.0, "rain": 4.5, "hum": 68 },
-    { "name": "East Godavari", "lat": 17.2305, "lng": 81.8282, "temp": 31.8, "rain": 22.4, "hum": 88 },
-    { "name": "Guntur", "lat": 16.3067, "lng": 80.4365, "temp": 33.5, "rain": 11.2, "hum": 75 },
-    { "name": "Krishna", "lat": 16.1667, "lng": 81.1333, "temp": 32.9, "rain": 14.8, "hum": 82 },
-    { "name": "Kurnool", "lat": 15.8281, "lng": 78.0373, "temp": 35.1, "rain": 1.0, "hum": 52 },
-    { "name": "Prakasam", "lat": 15.5057, "lng": 79.6450, "temp": 33.8, "rain": 3.2, "hum": 64 },
-    { "name": "Srikakulam", "lat": 18.2949, "lng": 83.8938, "temp": 30.5, "rain": 28.6, "hum": 92 },
-    { "name": "Nellore", "lat": 14.4426, "lng": 79.9865, "temp": 33.0, "rain": 5.1, "hum": 70 },
-    { "name": "Visakhapatnam", "lat": 17.6868, "lng": 83.2185, "temp": 31.2, "rain": 18.5, "hum": 85 },
-    { "name": "Vizianagaram", "lat": 18.1124, "lng": 83.3989, "temp": 30.9, "rain": 21.0, "hum": 89 },
-    { "name": "West Godavari", "lat": 16.8105, "lng": 81.4288, "temp": 32.1, "rain": 19.3, "hum": 86 },
-    { "name": "YSR Kadapa", "lat": 14.4673, "lng": 78.8242, "temp": 34.6, "rain": 1.8, "hum": 58 }
+    { "name": "Anantapur", "lat": 14.6819, "lng": 77.6006, "temp": 34.2, "rain": 2.1, "hum": 55, "pressure": 1008, "wind": 15 },
+    { "name": "Chittoor", "lat": 13.2172, "lng": 79.1003, "temp": 32.0, "rain": 4.5, "hum": 68, "pressure": 1009, "wind": 12 },
+    { "name": "East Godavari", "lat": 17.2305, "lng": 81.8282, "temp": 31.8, "rain": 22.4, "hum": 88, "pressure": 1007, "wind": 22 },
+    { "name": "Guntur", "lat": 16.3067, "lng": 80.4365, "temp": 33.5, "rain": 11.2, "hum": 75, "pressure": 1007, "wind": 18 },
+    { "name": "Krishna", "lat": 16.1667, "lng": 81.1333, "temp": 32.9, "rain": 14.8, "hum": 82, "pressure": 1008, "wind": 20 },
+    { "name": "Kurnool", "lat": 15.8281, "lng": 78.0373, "temp": 35.1, "rain": 1.0, "hum": 52, "pressure": 1009, "wind": 14 },
+    { "name": "Prakasam", "lat": 15.5057, "lng": 79.6450, "temp": 33.8, "rain": 3.2, "hum": 64, "pressure": 1010, "wind": 16 },
+    { "name": "Srikakulam", "lat": 18.2949, "lng": 83.8938, "temp": 30.5, "rain": 28.6, "hum": 92, "pressure": 1006, "wind": 25 },
+    { "name": "Nellore", "lat": 14.4426, "lng": 79.9865, "temp": 33.0, "rain": 5.1, "hum": 70, "pressure": 1011, "wind": 17 },
+    { "name": "Visakhapatnam", "lat": 17.6868, "lng": 83.2185, "temp": 31.2, "rain": 18.5, "hum": 85, "pressure": 1006, "wind": 24 },
+    { "name": "Vizianagaram", "lat": 18.1124, "lng": 83.3989, "temp": 30.9, "rain": 21.0, "hum": 89, "pressure": 1006, "wind": 21 },
+    { "name": "West Godavari", "lat": 16.8105, "lng": 81.4288, "temp": 32.1, "rain": 19.3, "hum": 86, "pressure": 1008, "wind": 19 },
+    { "name": "YSR Kadapa", "lat": 14.4673, "lng": 78.8242, "temp": 34.6, "rain": 1.8, "hum": 58, "pressure": 1009, "wind": 13 }
 ]
 
 def seed_data():
@@ -30,6 +30,22 @@ def seed_data():
     ClimateObservation.objects.all().delete()
     ClimatePrediction.objects.all().delete()
     Alert.objects.all().delete()
+    District.objects.all().delete()
+    State.objects.all().delete()
+
+    print("Creating State Andhra Pradesh...")
+    state, _ = State.objects.get_or_create(name="Andhra Pradesh")
+
+    print("Creating Districts...")
+    district_map = {}
+    for station in DISTRICT_STATIONS:
+        district = District.objects.create(
+            name=station["name"],
+            state=state,
+            latitude=station["lat"],
+            longitude=station["lng"]
+        )
+        district_map[station["name"]] = district
 
     print("Generating Climate Observation history (past 30 days)...")
     today = datetime.date.today()
@@ -39,6 +55,7 @@ def seed_data():
         obs_date = today - datetime.timedelta(days=day_offset)
         # Seed for each district station
         for station in DISTRICT_STATIONS:
+            district_obj = district_map[station["name"]]
             # Introduce slight daily variance
             temp_var = random.uniform(-1.5, 1.5)
             rain_var = random.uniform(-3.0, 5.0)
@@ -55,11 +72,14 @@ def seed_data():
             observations_to_create.append(
                 ClimateObservation(
                     date=obs_date,
+                    district=district_obj,
                     latitude=station["lat"],
                     longitude=station["lng"],
                     temperature=final_temp,
                     rainfall=final_rain,
                     humidity=final_hum,
+                    pressure=station["pressure"] + random.randint(-2, 2),
+                    wind=round(random.uniform(8.0, 25.0), 1),
                     lst=final_lst,
                     sst=final_sst,
                     wind_speed=round(random.uniform(8.0, 25.0), 1),
@@ -74,17 +94,38 @@ def seed_data():
     predictions_to_create = []
     for day_offset in range(7):
         pred_date = today + datetime.timedelta(days=day_offset + 1)
-        predictions_to_create.append(
-            ClimatePrediction(
-                date=pred_date,
-                temperature_prediction=round(32.4 + random.uniform(-1.0, 1.5), 1),
-                rainfall_prediction=round(max(0.0, 12.4 + random.uniform(-5.0, 8.0)), 1),
-                humidity_prediction=round(random.uniform(70.0, 85.0), 1),
-                wind_speed_prediction=round(random.uniform(12.0, 20.0), 1)
+        for station in DISTRICT_STATIONS:
+            district_obj = district_map[station["name"]]
+            
+            pred_temp = round(station["temp"] + random.uniform(-1.0, 1.5), 1)
+            pred_rain = round(max(0.0, station["rain"] + random.uniform(-3.0, 4.0)), 1)
+            pred_hum = round(min(100.0, max(10.0, station["hum"] + random.uniform(-5.0, 5.0))), 1)
+            
+            predictions_to_create.append(
+                ClimatePrediction(
+                    date=pred_date,
+                    district=district_obj,
+                    latitude=station["lat"],
+                    longitude=station["lng"],
+                    rainfall=pred_rain,
+                    temperature=pred_temp,
+                    humidity=pred_hum,
+                    pressure=station["pressure"],
+                    wind=round(random.uniform(10.0, 20.0), 1),
+                    lst=round(pred_temp + 2.5, 1),
+                    sst=round(pred_temp - 2.8, 1) if station["lng"] > 80.5 else 0.0,
+                    prediction_confidence=round(random.uniform(0.75, 0.95), 2),
+                    horizon="7-day" if day_offset >= 3 else ("3-day" if day_offset >= 1 else "1-day"),
+                    
+                    # Aliases for compatibility
+                    rainfall_prediction=pred_rain,
+                    temperature_prediction=pred_temp,
+                    humidity_prediction=pred_hum,
+                    wind_speed_prediction=round(random.uniform(10.0, 20.0), 1)
+                )
             )
-        )
     ClimatePrediction.objects.bulk_create(predictions_to_create)
-    print("Created 7-day predictive outlook records.")
+    print(f"Created {len(predictions_to_create)} predictive outlook records.")
 
     print("Generating active climate alerts...")
     alerts = [

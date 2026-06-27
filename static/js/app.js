@@ -21,13 +21,45 @@ const AppState = {
     selectedLat: 15.9129,          // updated on map click / station select
     selectedLng: 79.7400,
     map: null,
+    mapRight: null,                // simulated split screen map
+    isSplitMode: false,
+    playback: {
+        isPlaying: false,
+        speed: 1,                  // playback speed: 1, 2, 5
+        intervalId: null
+    },
+    timeMode: 'live',
+    timeYear: 2026,
+    timeMonth: 6,
+    timeDay: 25,
+    timeHour: 15,
+    currentDistrictsData: [],
+    cycloneActive: false,
+    cycloneEye: null,
+    isEvolutionMode: false,
+    activeScenario: null,          // 'heatwave', 'cyclone', 'flood', 'drought', 'uhi', 'monsoon'
     districtLayer: null,
+    districtLayerRight: null,
     apGeoJSON: null,
     overlayLayers: {},
+    overlayLayersRight: {},
     charts: {},
     clickedMarker: null,
+    clickedMarkerRight: null,
     satelliteLayers: null,
-    darkBaseLayer: null
+    satelliteLayersRight: null,
+    darkBaseLayer: null,
+    darkBaseLayerRight: null,
+    hazardLayers: [],              // tracking animated hazard lines/polygons
+    hazardLayersRight: [],
+    backendDistricts: null,
+    baselineDistricts: null,
+    windCanvasLeft: null,
+    windCanvasRight: null,
+    windParticlesActive: false,
+    cycloneLayers: [],
+    cycloneLayersRight: [],
+    cycloneWindSpeed: 0
 };
 
 // Andhra Pradesh coordinates center & zoom bounds (post-split center)
@@ -151,7 +183,7 @@ async function checkModelStatus() {
 // Map Initialization
 function initMap() {
     // Create map with zoom controls disabled (custom buttons used)
-    AppState.map = L.map('map', {
+    AppState.map = L.map('map-left', {
         zoomControl: false,
         attributionControl: false,
         minZoom: 5,
@@ -536,7 +568,84 @@ function resetMapView() {
     AppState.selectedDistrict = "Andhra Pradesh";
     document.getElementById("location-indicator").innerText = "Andhra Pradesh";
     AppState.map.setView(AP_CENTER, AP_ZOOM, { animate: true, duration: 1.5 });
+    if (AppState.mapRight && AppState.isSplitMode) {
+        AppState.mapRight.setView(AP_CENTER, AP_ZOOM, { animate: true, duration: 1.5 });
+    }
     fetchWeatherData(); // restore original KPIs
+}
+
+// Leaflet Map Synchronization Utility
+function syncMaps(mapA, mapB) {
+    let activeMap = null;
+    function sync(e) {
+        if (activeMap && activeMap !== e.target) return;
+        activeMap = e.target;
+        const targetMap = (e.target === mapA) ? mapB : mapA;
+        targetMap.setView(e.target.getCenter(), e.target.getZoom(), { animate: false });
+        activeMap = null;
+    }
+    mapA.on('zoomend drag move', sync);
+    mapB.on('zoomend drag move', sync);
+}
+
+// Initialize simulated right side map for split comparison
+function initMapRight() {
+    if (AppState.mapRight) return;
+
+    AppState.mapRight = L.map('map-right', {
+        zoomControl: false,
+        attributionControl: false,
+        minZoom: 5,
+        maxZoom: 18
+    }).setView(AppState.map.getCenter(), AppState.map.getZoom());
+
+    // Set base map depending on satellite toggle
+    AppState.darkBaseLayerRight = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19
+    });
+    
+    const satImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19
+    });
+    const satStreets = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19, opacity: 0.8
+    });
+    const satPlaces = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19, opacity: 0.95
+    });
+    AppState.satelliteLayersRight = L.layerGroup([satImagery, satStreets, satPlaces]);
+
+    if (AppState.activeLayers.satellite) {
+        AppState.satelliteLayersRight.addTo(AppState.mapRight);
+    } else {
+        AppState.darkBaseLayerRight.addTo(AppState.mapRight);
+    }
+
+    // Add boundaries
+    if (AppState.apGeoJSON) {
+        AppState.districtLayerRight = L.geoJSON(AppState.apGeoJSON, {
+            style: {
+                color: '#ffffff',
+                weight: 2.0,
+                opacity: 0.8,
+                fillColor: 'transparent',
+                fillOpacity: 0,
+                dashArray: '6, 6'
+            }
+        }).addTo(AppState.mapRight);
+    }
+
+    // Add state label
+    const stateLabelIcon = L.divIcon({
+        className: 'map-state-label text-center font-display font-bold text-white tracking-widest pointer-events-none select-none',
+        html: 'SIMULATED CLIMATE',
+        iconSize: [200, 30],
+        iconAnchor: [100, 15]
+    });
+    L.marker([15.80, 79.70], { icon: stateLabelIcon, interactive: false }).addTo(AppState.mapRight);
+
+    // Sync views
+    syncMaps(AppState.map, AppState.mapRight);
 }
 
 // Custom value animation
@@ -755,6 +864,108 @@ function setupEventListeners() {
         });
     }
 
+    // Sidebar Collapsible Toggle Listener
+    document.getElementById("sidebar-toggle-btn")?.addEventListener("click", () => {
+        const container = document.getElementById("app-container");
+        if (container) {
+            const isCollapsing = !container.classList.contains("sidebar-collapsed");
+            container.classList.toggle("sidebar-collapsed");
+            
+            // GSAP micro-animation for smooth slide effect
+            gsap.to("#sidebar", {
+                width: isCollapsing ? 72 : 256,
+                duration: 0.3,
+                ease: "power2.inOut",
+                onComplete: () => {
+                    if (AppState.map) AppState.map.invalidateSize();
+                    if (AppState.mapRight) AppState.mapRight.invalidateSize();
+                }
+            });
+            gsap.to("#top-header", {
+                left: isCollapsing ? 88 : 288,
+                duration: 0.3,
+                ease: "power2.inOut"
+            });
+        }
+    });
+
+    // Split Screen Toggle Listener
+    document.getElementById("split-screen-toggle-btn")?.addEventListener("click", (e) => {
+        const toggleBtn = e.currentTarget;
+        const mapContainer = document.getElementById("map-container");
+        AppState.isSplitMode = !AppState.isSplitMode;
+
+        if (AppState.isSplitMode) {
+            toggleBtn.classList.add("layer-btn-active");
+            mapContainer.classList.add("split-active");
+            initMapRight();
+            setTimeout(() => {
+                if (AppState.map) AppState.map.invalidateSize();
+                if (AppState.mapRight) AppState.mapRight.invalidateSize();
+            }, 300);
+        } else {
+            toggleBtn.classList.remove("layer-btn-active");
+            mapContainer.classList.remove("split-active");
+            setTimeout(() => {
+                if (AppState.map) AppState.map.invalidateSize();
+            }, 300);
+        }
+        updateMapLayers();
+    });
+
+    // TIME NAVIGATION & WIND PARTICLES INITIALIZATION
+    initTimeNavigation();
+    initWindParticles();
+
+    // Toggle detailed prognosis matrix collapsible (GSAP powered)
+    const togglePrognosisBtn = document.getElementById("toggle-prognosis-btn");
+    const prognosisCollapsible = document.getElementById("prognosis-collapsible");
+    const prognosisStatusTxt = document.getElementById("prognosis-status-txt");
+    const prognosisChevronIcon = document.getElementById("prognosis-chevron-icon");
+
+    if (togglePrognosisBtn && prognosisCollapsible) {
+        togglePrognosisBtn.addEventListener("click", () => {
+            const isHidden = prognosisCollapsible.classList.contains("hidden");
+            if (isHidden) {
+                prognosisCollapsible.classList.remove("hidden");
+                prognosisCollapsible.style.maxHeight = "0px";
+                prognosisCollapsible.style.opacity = "0";
+                
+                gsap.to(prognosisCollapsible, {
+                    maxHeight: "350px",
+                    opacity: 1,
+                    duration: 0.45,
+                    ease: "power2.out",
+                    onComplete: () => {
+                        prognosisCollapsible.style.maxHeight = "none";
+                    }
+                });
+                if (prognosisStatusTxt) prognosisStatusTxt.innerText = "Collapse";
+                if (prognosisChevronIcon) prognosisChevronIcon.style.transform = "rotate(180deg)";
+            } else {
+                gsap.to(prognosisCollapsible, {
+                    maxHeight: "0px",
+                    opacity: 0,
+                    duration: 0.35,
+                    ease: "power2.in",
+                    onComplete: () => {
+                        prognosisCollapsible.classList.add("hidden");
+                    }
+                });
+                if (prognosisStatusTxt) prognosisStatusTxt.innerText = "Expand";
+                if (prognosisChevronIcon) prognosisChevronIcon.style.transform = "rotate(0deg)";
+            }
+        });
+    }
+
+    // Scenario Preset Button Clicks
+    document.querySelectorAll(".scenario-btn").forEach(btn => {
+        btn.addEventListener("click", (e) => {
+            const scenario = e.currentTarget.getAttribute("data-scenario");
+            triggerScenarioPreset(scenario);
+        });
+    });
+
     // Global helper for search selection
     window.handleSearchSelect = function(name) {
         const station = DISTRICT_STATIONS.find(s => s.name === name);
@@ -786,6 +997,25 @@ function switchPanel(panelName) {
     const rightPanelContainer = document.getElementById("right-side-panel-container");
     const layersPanel = document.getElementById("map-layers-panel");
     const mapLegend = document.getElementById("map-legend");
+    const playbackPanel = document.getElementById("playback-panel");
+    const container = document.getElementById("app-container");
+    const showPlayback = ['digital-twin', 'simulator', 'weather'].includes(panelName);
+
+    // Toggle Playback bar visibility
+    if (playbackPanel) {
+        if (showPlayback) {
+            playbackPanel.classList.remove("hidden");
+            if (container) container.classList.add("playback-active");
+            gsap.fromTo(playbackPanel, { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.3 });
+        } else {
+            playbackPanel.classList.add("hidden");
+            if (container) container.classList.remove("playback-active");
+            pausePlayback(); // stop playing
+            AppState.backendDistricts = null;
+            AppState.baselineDistricts = null;
+            updateMapLayers();
+        }
+    }
 
     if (panelName === 'dashboard') {
         // Show dashboard widgets with animation
@@ -853,6 +1083,12 @@ function switchPanel(panelName) {
             }, 100);
         }
     }
+    
+    // Invalidate map sizes in case borders shifted
+    setTimeout(() => {
+        if (AppState.map) AppState.map.invalidateSize();
+        if (AppState.mapRight) AppState.mapRight.invalidateSize();
+    }, 300);
 }
 
 // Timeline State Manipulator
@@ -1068,6 +1304,21 @@ function getHumidityColor(h) {
     return '#047857'; // humid dark green
 }
 
+function getLSTColor(t) {
+    if (t < 28) return '#fdba74';
+    if (t < 35) return '#f97316';
+    if (t < 42) return '#ea580c';
+    if (t < 48) return '#c2410c';
+    return '#7c2d12';
+}
+
+function getSSTColor(t) {
+    if (t < 27) return '#60a5fa';
+    if (t < 29) return '#3b82f6';
+    if (t < 31) return '#1d4ed8';
+    return '#1e3a8a';
+}
+
 function getWindAngle(dir) {
     const mapping = {
         'N': 0, 'NNE': 22.5, 'NE': 45, 'ENE': 67.5,
@@ -1224,20 +1475,25 @@ function renderWeatherCanvas(valueKey, colorStops, stations) {
     return mainCanvas.toDataURL('image/png');
 }
 
-// Redraw spatial layers on Leaflet Map
+// Redraw spatial layers on Leaflet Map (supporting split screen comparison)
 function updateMapLayers(simulated = false) {
-    // Clear existing overlay layers
+    // 1. Clear existing layers on left map
     Object.keys(AppState.overlayLayers).forEach(key => {
         AppState.map.removeLayer(AppState.overlayLayers[key]);
     });
     AppState.overlayLayers = {};
 
-    const simTemp = simulated ? AppState.simulator.temp : 0.0;
-    const simRain = simulated ? (AppState.simulator.rain / 100.0) : 0.0;
-    const simHumidity = simulated ? AppState.simulator.humidity : 0.0;
+    // 2. Clear existing layers on right map
+    if (AppState.mapRight) {
+        Object.keys(AppState.overlayLayersRight).forEach(key => {
+            AppState.mapRight.removeLayer(AppState.overlayLayersRight[key]);
+        });
+        AppState.overlayLayersRight = {};
+    }
+
     const timeMult = AppState.activeTimeline === 'past' ? 0.92 : (AppState.activeTimeline === 'future' ? 1.08 : 1.0);
 
-    // ── Base map switching (Satellite ↔ Dark vector) ──────────────────────────
+    // ── Base map switching (Satellite ↔ Dark vector) for Left Map ──────────────────────────
     if (AppState.activeLayers.satellite) {
         if (!AppState.map.hasLayer(AppState.satelliteLayers)) AppState.map.addLayer(AppState.satelliteLayers);
         if (AppState.map.hasLayer(AppState.darkBaseLayer))    AppState.map.removeLayer(AppState.darkBaseLayer);
@@ -1246,15 +1502,16 @@ function updateMapLayers(simulated = false) {
         if (AppState.map.hasLayer(AppState.satelliteLayers))  AppState.map.removeLayer(AppState.satelliteLayers);
     }
 
-    // ── Build station dataset adjusted for simulation/timeline ────────────────
-    const adjustedStations = DISTRICT_STATIONS.map(s => ({
-        ...s,
-        temp: (s.temp * timeMult) + simTemp,
-        rain: Math.max(0, s.rain * timeMult * (1.0 + simRain)),
-        wind: s.wind * timeMult,
-        pressure: s.pressure * timeMult,
-        humidity: Math.min(100, Math.max(0, s.humidity + simHumidity))
-    }));
+    // ── Base map switching for Right Map ────────────────────────────────────────────────
+    if (AppState.mapRight && AppState.isSplitMode) {
+        if (AppState.activeLayers.satellite) {
+            if (!AppState.mapRight.hasLayer(AppState.satelliteLayersRight)) AppState.mapRight.addLayer(AppState.satelliteLayersRight);
+            if (AppState.mapRight.hasLayer(AppState.darkBaseLayerRight))    AppState.mapRight.removeLayer(AppState.darkBaseLayerRight);
+        } else {
+            if (!AppState.mapRight.hasLayer(AppState.darkBaseLayerRight))   AppState.mapRight.addLayer(AppState.darkBaseLayerRight);
+            if (AppState.mapRight.hasLayer(AppState.satelliteLayersRight))  AppState.mapRight.removeLayer(AppState.satelliteLayersRight);
+        }
+    }
 
     // ── Determine active weather layer & color stops ───────────────────────────
     let valueKey = null, colorStops = null;
@@ -1264,49 +1521,149 @@ function updateMapLayers(simulated = false) {
     else if (AppState.activeLayers.pressure)    { valueKey = 'pressure'; colorStops = PRESSURE_COLOR_STOPS; }
     else if (AppState.activeLayers.humidity)    { valueKey = 'humidity'; colorStops = HUMIDITY_COLOR_STOPS; }
 
-    // ── Render Windy-style IDW canvas gradient clipped to AP boundary ─────────
-    if (valueKey && colorStops) {
-        const imageUrl = renderWeatherCanvas(valueKey, colorStops, adjustedStations);
-        const apBounds = [[12.3, 76.5], [19.6, 85.0]];  // AP bounding box
-        const gradientOverlay = L.imageOverlay(imageUrl, apBounds, {
-            opacity: 0.74,
-            interactive: false,
-            className: 'weather-gradient-overlay'
+    let leftStations = [];
+    let rightStations = [];
+
+    if (AppState.backendDistricts) {
+        const mapBackendToStation = (d) => ({
+            name: d.district,
+            coords: [d.latitude, d.longitude],
+            temp: d.temperature,
+            rain: d.rainfall,
+            wind: d.wind_speed,
+            pressure: d.pressure,
+            humidity: d.humidity,
+            dir: d.wind_direction,
+            lst: d.lst,
+            sst: d.sst,
+            drought_risk: d.drought_risk,
+            flood_risk: d.flood_risk,
+            heatwave_risk: d.heatwave_risk,
+            cyclone_risk: d.cyclone_risk
         });
-        gradientOverlay.addTo(AppState.map);
-        AppState.overlayLayers['gradient'] = gradientOverlay;
+
+        if (AppState.timeMode === 'scenario' && AppState.isSplitMode && AppState.baselineDistricts) {
+            leftStations = AppState.baselineDistricts.map(mapBackendToStation);
+        } else {
+            leftStations = AppState.backendDistricts.map(mapBackendToStation);
+        }
+        rightStations = AppState.backendDistricts.map(mapBackendToStation);
+    } else {
+        const baselineSim = (AppState.isSplitMode) ? false : simulated; 
+        const baselineTemp = baselineSim ? AppState.simulator.temp : 0.0;
+        const baselineRain = baselineSim ? (AppState.simulator.rain / 100.0) : 0.0;
+        const baselineHum  = baselineSim ? AppState.simulator.humidity : 0.0;
+
+        leftStations = DISTRICT_STATIONS.map(s => {
+            const bTemp = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+                ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'temp') : s.temp;
+            const bRain = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+                ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'rain') : s.rain;
+            const bWind = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+                ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'wind') : s.wind;
+            const bHum  = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+                ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'humidity') : s.humidity;
+
+            return {
+                ...s,
+                temp: (bTemp * timeMult) + baselineTemp,
+                rain: Math.max(0, bRain * timeMult * (1.0 + baselineRain)),
+                wind: bWind * timeMult,
+                pressure: s.pressure * timeMult,
+                humidity: Math.min(100, Math.max(0, bHum + baselineHum))
+            };
+        });
+
+        const rightTemp = simulated ? AppState.simulator.temp : 0.0;
+        const rightRain = simulated ? (AppState.simulator.rain / 100.0) : 0.0;
+        const rightHum  = simulated ? AppState.simulator.humidity : 0.0;
+
+        rightStations = DISTRICT_STATIONS.map(s => {
+            const bTemp = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+                ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'temp') : s.temp;
+            const bRain = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+                ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'rain') : s.rain;
+            const bWind = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+                ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'wind') : s.wind;
+            const bHum  = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+                ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'humidity') : s.humidity;
+
+            let scenarioTemp = rightTemp;
+            let scenarioRain = rightRain;
+            let scenarioHum  = rightHum;
+            let scenarioWind = bWind * timeMult;
+            let scenarioPress = s.pressure * timeMult;
+
+            if (AppState.activeScenario === 'heatwave') { scenarioTemp = 4.5; scenarioRain = -0.3; scenarioHum = -10; }
+            else if (AppState.activeScenario === 'cyclone') { scenarioTemp = 1.0; scenarioRain = 0.35; scenarioHum = 15; scenarioWind += 15; scenarioPress -= 15; }
+            else if (AppState.activeScenario === 'flood') { scenarioTemp = -0.5; scenarioRain = 0.4; scenarioHum = 10; }
+            else if (AppState.activeScenario === 'drought') { scenarioTemp = 3.0; scenarioRain = -0.5; scenarioHum = -15; }
+            else if (AppState.activeScenario === 'uhi') { scenarioTemp = 2.5; scenarioHum = -5; }
+            else if (AppState.activeScenario === 'monsoon') { scenarioTemp = 1.5; scenarioRain = -0.25; scenarioHum = -8; }
+
+            return {
+                ...s,
+                temp: (bTemp * timeMult) + scenarioTemp,
+                rain: Math.max(0, bRain * timeMult * (1.0 + scenarioRain)),
+                wind: scenarioWind,
+                pressure: scenarioPress,
+                humidity: Math.min(100, Math.max(0, bHum + scenarioHum))
+            };
+        });
     }
 
-    // ── Small station reference dots (clickable, show tooltip on hover) ────────
-    const stationsGroup = L.layerGroup();
-    adjustedStations.forEach(station => {
+    // ── Render Weather Gradients clipped to AP boundary ─────────
+    if (valueKey && colorStops) {
+        const imageUrlLeft = renderWeatherCanvas(valueKey, colorStops, leftStations);
+        const apBounds = [[12.3, 76.5], [19.6, 85.0]];
+        const leftGradient = L.imageOverlay(imageUrlLeft, apBounds, {
+            opacity: 0.74, interactive: false, className: 'weather-gradient-overlay'
+        }).addTo(AppState.map);
+        AppState.overlayLayers['gradient'] = leftGradient;
+
+        if (AppState.mapRight && AppState.isSplitMode) {
+            const imageUrlRight = renderWeatherCanvas(valueKey, colorStops, rightStations);
+            const rightGradient = L.imageOverlay(imageUrlRight, apBounds, {
+                opacity: 0.74, interactive: false, className: 'weather-gradient-overlay'
+            }).addTo(AppState.mapRight);
+            AppState.overlayLayersRight['gradient'] = rightGradient;
+        }
+    }
+
+    // ── Render AWS Station Reference Markers ────────────────────────
+    const stationsGroupLeft = L.layerGroup();
+    leftStations.forEach(station => {
         const dotIcon = L.divIcon({
             className: 'weather-layer-div-icon',
             html: `<div class="station-ref-dot"></div>`,
-            iconSize: [8, 8],
-            iconAnchor: [4, 4]
+            iconSize: [8, 8], iconAnchor: [4, 4]
         });
         const marker = L.marker(station.coords, { icon: dotIcon, interactive: true });
-        // marker.bindTooltip(
-        //     `<div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
-        //         <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name}</p>
-        //         <p style="margin:2px 0;color:#e2e8f0">Temp: ${station.temp.toFixed(1)}°C &nbsp; Rain: ${station.rain.toFixed(1)}mm</p>
-        //         <p style="margin:2px 0;color:#e2e8f0">Wind: ${station.wind}kt ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
-        //         <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
-        //     </div>`,
-        //     { className: 'custom-leaflet-tooltip', direction: 'top', offset: [0, -6] }
-        // );
-
-        // ✅ REPLACE IT WITH THIS ✅
         marker.stationName = station.name;
         bindDynamicAITooltip(marker, station);
-        // ✅ END OF REPLACEMENT ✅
-
         marker.on('click', () => selectDistrict(station));
-        stationsGroup.addLayer(marker);
+        stationsGroupLeft.addLayer(marker);
     });
-    stationsGroup.addTo(AppState.map);
-    AppState.overlayLayers['stations'] = stationsGroup;
+    stationsGroupLeft.addTo(AppState.map);
+    AppState.overlayLayers['stations'] = stationsGroupLeft;
+
+    if (AppState.mapRight && AppState.isSplitMode) {
+        const stationsGroupRight = L.layerGroup();
+        rightStations.forEach(station => {
+            const dotIcon = L.divIcon({
+                className: 'weather-layer-div-icon',
+                html: `<div class="station-ref-dot"></div>`,
+                iconSize: [8, 8], iconAnchor: [4, 4]
+            });
+            const marker = L.marker(station.coords, { icon: dotIcon, interactive: true });
+            marker.stationName = station.name;
+            bindDynamicAITooltip(marker, station);
+            marker.on('click', () => selectDistrict(station));
+            stationsGroupRight.addLayer(marker);
+        });
+        stationsGroupRight.addTo(AppState.mapRight);
+        AppState.overlayLayersRight['stations'] = stationsGroupRight;
+    }
 }
 
 // Setup Forecast and Simulation Charts
@@ -1583,4 +1940,1213 @@ function applyAITooltip(marker, data, station) {
             <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
         </div>
     `);
+}
+
+// ─── Playback & Time Navigation Engine ──────────────────────────────────────────
+
+function populateCalendarDays() {
+    const yearSelect = document.getElementById("cal-year");
+    const monthSelect = document.getElementById("cal-month");
+    const daySelect = document.getElementById("cal-day");
+    if (!yearSelect || !monthSelect || !daySelect) return;
+    
+    const year = parseInt(yearSelect.value);
+    const month = parseInt(monthSelect.value);
+    
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const currentSelected = parseInt(daySelect.value) || AppState.timeDay || 1;
+    
+    daySelect.innerHTML = "";
+    for (let d = 1; d <= daysInMonth; d++) {
+        const opt = document.createElement("option");
+        opt.value = d;
+        opt.innerText = d;
+        if (d === currentSelected || (d === daysInMonth && currentSelected > daysInMonth)) {
+            opt.selected = true;
+        }
+        daySelect.appendChild(opt);
+    }
+    
+    AppState.timeYear = year;
+    AppState.timeMonth = month;
+    AppState.timeDay = parseInt(daySelect.value);
+}
+
+function initTimeNavigation() {
+    populateCalendarDays();
+    
+    document.getElementById("cal-year")?.addEventListener("change", () => {
+        populateCalendarDays();
+        updateTimeNavigationState();
+    });
+    
+    document.getElementById("cal-month")?.addEventListener("change", () => {
+        populateCalendarDays();
+        updateTimeNavigationState();
+    });
+    
+    document.getElementById("cal-day")?.addEventListener("change", (e) => {
+        AppState.timeDay = parseInt(e.target.value);
+        updateTimeNavigationState();
+    });
+    
+    const modeButtons = ["history", "live", "forecast", "scenario"];
+    modeButtons.forEach(m => {
+        const btn = document.getElementById(`mode-${m}`);
+        if (btn) {
+            btn.addEventListener("click", () => {
+                modeButtons.forEach(x => {
+                    const b = document.getElementById(`mode-${x}`);
+                    if (b) {
+                        b.classList.remove("bg-cyan-500", "text-navy-900");
+                        b.classList.add("text-slate-400");
+                    }
+                });
+                btn.classList.add("bg-cyan-500", "text-navy-900");
+                btn.classList.remove("text-slate-400");
+                AppState.timeMode = m;
+                
+                if (m !== 'scenario') {
+                    AppState.activeScenario = null;
+                    document.querySelectorAll(".scenario-btn").forEach(sb => {
+                        sb.classList.remove("bg-cyan-500/20", "border-cyan-500/50");
+                        sb.style.boxShadow = "";
+                    });
+                }
+                
+                updateTimeNavigationState();
+            });
+        }
+    });
+    
+    document.getElementById("pb-play-btn")?.addEventListener("click", () => {
+        startPlayback();
+    });
+    
+    document.getElementById("pb-pause-btn")?.addEventListener("click", () => {
+        pausePlayback();
+    });
+    
+    document.getElementById("pb-stop-btn")?.addEventListener("click", () => {
+        stopPlayback();
+    });
+    
+    document.getElementById("pb-prev-btn")?.addEventListener("click", () => {
+        pausePlayback();
+        AppState.timeHour--;
+        if (AppState.timeHour < 0) {
+            AppState.timeHour = 23;
+            AppState.timeDay--;
+            if (AppState.timeDay < 1) {
+                AppState.timeMonth--;
+                if (AppState.timeMonth < 1) {
+                    AppState.timeMonth = 12;
+                    AppState.timeYear--;
+                }
+                const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
+                AppState.timeDay = maxDays;
+            }
+            document.getElementById("cal-year").value = AppState.timeYear;
+            document.getElementById("cal-month").value = AppState.timeMonth;
+            populateCalendarDays();
+            document.getElementById("cal-day").value = AppState.timeDay;
+        }
+        updateTimeNavigationState();
+    });
+    
+    document.getElementById("pb-next-btn")?.addEventListener("click", () => {
+        pausePlayback();
+        AppState.timeHour++;
+        if (AppState.timeHour > 23) {
+            AppState.timeHour = 0;
+            AppState.timeDay++;
+            const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
+            if (AppState.timeDay > maxDays) {
+                AppState.timeDay = 1;
+                AppState.timeMonth++;
+                if (AppState.timeMonth > 12) {
+                    AppState.timeMonth = 1;
+                    AppState.timeYear++;
+                }
+            }
+            document.getElementById("cal-year").value = AppState.timeYear;
+            document.getElementById("cal-month").value = AppState.timeMonth;
+            populateCalendarDays();
+            document.getElementById("cal-day").value = AppState.timeDay;
+        }
+        updateTimeNavigationState();
+    });
+    
+    document.querySelectorAll(".timeline-hour-dot").forEach(dot => {
+        dot.addEventListener("click", () => {
+            pausePlayback();
+            AppState.timeHour = parseInt(dot.getAttribute("data-hour"));
+            updateTimeNavigationState();
+        });
+    });
+
+    document.querySelectorAll(".pb-speed-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".pb-speed-btn").forEach(b => {
+                b.classList.remove("bg-cyan-500", "text-navy-900", "active");
+                b.classList.add("text-slate-400");
+            });
+            btn.classList.add("bg-cyan-500", "text-navy-900", "active");
+            btn.classList.remove("text-slate-400");
+            AppState.playback.speed = parseInt(btn.getAttribute("data-speed"));
+        });
+    });
+}
+
+function updateTimeNavigationState() {
+    const yr = AppState.timeYear;
+    const mo = String(AppState.timeMonth).padStart(2, '0');
+    const dy = String(AppState.timeDay).padStart(2, '0');
+    const hr = String(AppState.timeHour).padStart(2, '0');
+    const dtStr = `${yr}-${mo}-${dy}T${hr}:00`;
+    
+    const activeDot = document.querySelector(`.timeline-hour-dot[data-hour="${AppState.timeHour}"]`);
+    const caret = document.getElementById("timeline-caret");
+    if (activeDot && caret) {
+        const rowContainer = activeDot.closest('.relative');
+        if (rowContainer) {
+            rowContainer.appendChild(caret);
+            caret.style.left = `${activeDot.offsetLeft + activeDot.offsetWidth / 2}px`;
+            caret.style.bottom = `-10px`;
+            caret.style.opacity = "1";
+        }
+    }
+    
+    document.querySelectorAll(".timeline-hour-dot").forEach(dot => {
+        const dotHr = parseInt(dot.getAttribute("data-hour"));
+        dot.classList.remove("active", "passed");
+        if (dotHr === AppState.timeHour) {
+            dot.classList.add("active");
+        } else if (dotHr < AppState.timeHour) {
+            dot.classList.add("passed");
+        }
+    });
+    
+    const progressRow1 = document.getElementById("timeline-progress-row1");
+    const progressRow2 = document.getElementById("timeline-progress-row2");
+    
+    if (AppState.timeHour <= 11) {
+        const pct = (AppState.timeHour / 11) * 100;
+        if (progressRow1) progressRow1.style.width = `${pct}%`;
+        if (progressRow2) progressRow2.style.width = `0%`;
+    } else {
+        if (progressRow1) progressRow1.style.width = `100%`;
+        const pct = ((AppState.timeHour - 12) / 11) * 100;
+        if (progressRow2) progressRow2.style.width = `${pct}%`;
+    }
+    
+    return fetchTimeNavigationData(dtStr, AppState.timeMode);
+}
+
+async function fetchTimeNavigationData(dtStr, modeVal) {
+    let url = `/api/playback?datetime=${encodeURIComponent(dtStr)}&mode=${encodeURIComponent(modeVal)}&lat=${AppState.selectedLat}&lng=${AppState.selectedLng}`;
+    if (modeVal === 'scenario') {
+        url += `&temp_delta=${AppState.simulator.temp}&rain_delta=${AppState.simulator.rain}&humidity_change=${AppState.simulator.humidity}&scenario_category=${AppState.activeScenario || 'Custom'}`;
+    }
+    
+    if (modeVal === 'scenario' && AppState.isSplitMode) {
+        let baselineUrl = `/api/playback?datetime=${encodeURIComponent(dtStr)}&mode=scenario&temp_delta=0&rain_delta=0&humidity_change=0&scenario_category=Custom`;
+        try {
+            const res = await fetch(baselineUrl);
+            const baselineData = await res.json();
+            AppState.baselineDistricts = baselineData.districts;
+        } catch (e) {
+            console.error("Failed to fetch baseline for split mode", e);
+        }
+    } else {
+        AppState.baselineDistricts = null;
+    }
+    
+    try {
+        const resp = await fetch(url);
+        const data = await resp.json();
+        
+        AppState.backendDistricts = data.districts;
+        
+        const parsedDate = new Date(data.date);
+        AppState.timeYear = parsedDate.getFullYear();
+        AppState.timeMonth = parsedDate.getMonth() + 1;
+        AppState.timeDay = parsedDate.getDate();
+        AppState.timeHour = data.hour;
+        
+        document.getElementById("cal-year").value = AppState.timeYear;
+        document.getElementById("cal-month").value = AppState.timeMonth;
+        populateCalendarDays();
+        document.getElementById("cal-day").value = AppState.timeDay;
+        
+        const monthsAbbrev = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const dtDisp = document.getElementById("active-datetime-display");
+        if (dtDisp) {
+            const displayHour = AppState.timeHour === 0 ? "12:00 AM" : 
+                                AppState.timeHour === 12 ? "12:00 PM" : 
+                                AppState.timeHour > 12 ? `${AppState.timeHour - 12}:00 PM` : `${AppState.timeHour}:00 AM`;
+            dtDisp.innerText = `${AppState.timeDay} ${monthsAbbrev[AppState.timeMonth - 1]} ${AppState.timeYear}, ${displayHour} IST`;
+        }
+        
+        animateValue('kpi-temp', data.metrics.temperature, ' °C');
+        animateValue('kpi-rain', data.metrics.rainfall, ' mm');
+        animateValue('kpi-humidity', Math.round(data.metrics.humidity), '%');
+        animateValue('kpi-wind', data.metrics.wind_speed, ' kmph');
+        
+        const currentDistrictData = data.districts.find(d => d.district.toLowerCase() === AppState.selectedDistrict.toLowerCase()) || data.districts[0];
+        if (currentDistrictData) {
+            const clickedTempEl = document.getElementById("clicked-temp");
+            if (clickedTempEl) clickedTempEl.innerText = `${currentDistrictData.temperature.toFixed(1)} °C`;
+            const clickedRainEl = document.getElementById("clicked-rain");
+            if (clickedRainEl) clickedRainEl.innerText = `${currentDistrictData.rainfall.toFixed(1)} mm`;
+            const clickedWindEl = document.getElementById("clicked-wind");
+            if (clickedWindEl) clickedWindEl.innerText = `${currentDistrictData.wind_speed.toFixed(1)} kmph ${currentDistrictData.wind_direction}`;
+            const clickedPressureEl = document.getElementById("clicked-pressure");
+            if (clickedPressureEl) clickedPressureEl.innerText = `${currentDistrictData.pressure.toFixed(1)} hPa`;
+            
+            const windDirEl = document.getElementById("kpi-wind-dir");
+            if (windDirEl) windDirEl.innerText = currentDistrictData.wind_direction;
+            
+            const navigationIcon = document.querySelector("#dashboard-widgets .glow-wind i[data-lucide='navigation']");
+            if (navigationIcon) {
+                const angle = getWindAngle(currentDistrictData.wind_direction);
+                navigationIcon.style.transform = `rotate(${angle}deg)`;
+            }
+            
+            updateRiskBadge('risk-drought', currentDistrictData.drought_risk);
+            updateRiskBadge('risk-flood', currentDistrictData.flood_risk);
+            updateRiskBadge('risk-heatwave', currentDistrictData.heatwave_risk);
+            
+            const agriEl = document.getElementById('risk-agri');
+            if (agriEl) {
+                const agriMap = {'Low': 'Optimal Yield Output', 'Medium': 'Moderate Stress', 'High': 'Critical Yield Loss', 'Critical': 'Severe Crop Wilting / Stress'};
+                agriEl.innerText = agriMap[currentDistrictData.agriculture_risk] || 'Optimal Yield Output';
+            }
+            
+            const waterEl = document.getElementById('risk-water');
+            if (waterEl) waterEl.innerText = currentDistrictData.water_stress.toFixed(1) + '%';
+            
+            const progressEl = document.getElementById('stress-progress');
+            if (progressEl) progressEl.style.width = currentDistrictData.water_stress + '%';
+        }
+        
+        const alertsContainer = document.getElementById("alerts-container");
+        if (alertsContainer && data.alerts) {
+            alertsContainer.innerHTML = "";
+            data.alerts.forEach(alert => {
+                let badgeClass = "badge-low";
+                if (alert.severity === "Critical") badgeClass = "badge-critical";
+                else if (alert.severity === "High") badgeClass = "badge-high";
+                else if (alert.severity === "Medium") badgeClass = "badge-medium";
+
+                alertsContainer.innerHTML += `
+                    <div class="p-3 bg-navy-800/80 rounded border border-slate-700/60 transition duration-200 hover:border-slate-600 flex flex-col gap-1.5 animate-float" style="animation-delay: ${alert.id * 0.1}s">
+                        <div class="flex items-center justify-between">
+                            <span class="${badgeClass} text-[10px] px-2 py-0.5 rounded uppercase font-bold tracking-wider">${alert.severity}</span>
+                            <span class="text-[11px] text-cyan-400 font-display font-medium">${alert.type} Alert</span>
+                        </div>
+                        <p class="text-xs text-slate-300 font-semibold mt-1">${alert.district}</p>
+                        <p class="text-[11px] text-slate-400 leading-relaxed">${alert.description}</p>
+                    </div>
+                `;
+            });
+        }
+        
+        updateMapLayers(modeVal === 'scenario');
+        drawCycloneOverlay(data.cyclone);
+        updatePrognosisMatrix(data.charts);
+        updatePrognosisCharts(data.charts);
+        
+    } catch (e) {
+        console.error("Time navigation fetch failed:", e);
+    }
+}
+
+function updatePrognosisMatrix(charts) {
+    if (!charts) return;
+    
+    // 1. Air Temperature Row (Continuous Heat Strip)
+    let tempRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
+    tempRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5 min-w-[120px]"><i data-lucide="thermometer" class="w-3.5 h-3.5 text-orange-400"></i> Temp (°C)</td>`;
+    for (let h = 0; h < 24; h++) {
+        const val = charts.temperature[h];
+        const color = getTempColor(val);
+        const textColor = (val < 30) ? '#081420' : '#ffffff';
+        tempRow += `<td class="p-1 text-center font-extrabold text-[9.5px]" style="background-color: ${color}; color: ${textColor}; border-right: 1px solid rgba(8, 20, 32, 0.15)">${val.toFixed(1)}°</td>`;
+    }
+    tempRow += `</tr>`;
+    
+    // 2. Land Surface Temperature (LST) Row (Copper/Thermal Strip)
+    let lstRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
+    lstRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="sun" class="w-3.5 h-3.5 text-amber-500"></i> LST (°C)</td>`;
+    for (let h = 0; h < 24; h++) {
+        const val = charts.lst[h];
+        const color = getLSTColor(val);
+        const textColor = (val < 35) ? '#081420' : '#ffffff';
+        lstRow += `<td class="p-1 text-center font-extrabold text-[9.5px]" style="background-color: ${color}; color: ${textColor}; border-right: 1px solid rgba(8, 20, 32, 0.15)">${val.toFixed(1)}°</td>`;
+    }
+    lstRow += `</tr>`;
+
+    // 3. Sea Surface Temperature (SST) Row (Ocean Blue/Purple Thermal Strip for Coastal)
+    let sstRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
+    sstRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="waves" class="w-3.5 h-3.5 text-cyan-400"></i> SST (°C)</td>`;
+    for (let h = 0; h < 24; h++) {
+        const val = charts.sst[h];
+        if (val > 0) {
+            const color = getSSTColor(val);
+            const textColor = '#ffffff';
+            sstRow += `<td class="p-1 text-center font-extrabold text-[9.5px]" style="background-color: ${color}; color: ${textColor}; border-right: 1px solid rgba(8, 20, 32, 0.15)">${val.toFixed(1)}°</td>`;
+        } else {
+            sstRow += `<td class="p-1 text-center text-slate-500 font-normal" style="color: #475569; border-right: 1px solid rgba(255,255,255,0.02)">-</td>`;
+        }
+    }
+    sstRow += `</tr>`;
+    
+    // 4. Rainfall Row (Vertical bar scan + numbers)
+    let rainRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
+    rainRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="cloud-rain" class="w-3.5 h-3.5 text-blue-400"></i> Rain (mm)</td>`;
+    for (let h = 0; h < 24; h++) {
+        const val = charts.rainfall[h];
+        if (val > 0) {
+            const intensity = Math.min(100, (val / 15.0) * 100);
+            rainRow += `<td class="p-1 text-center font-bold text-sky-400" style="background-color: rgba(56, 189, 248, 0.05); border-right: 1px solid rgba(255,255,255,0.02)">
+                <div class="flex flex-col items-center justify-end h-8 gap-0.5">
+                    <span class="text-[9px]">${val.toFixed(1)}</span>
+                    <div class="w-2.5 bg-sky-500/80 rounded-t-sm" style="height: ${Math.max(3, intensity * 0.2)}px;"></div>
+                </div>
+            </td>`;
+        } else {
+            rainRow += `<td class="p-1 text-center text-slate-600 font-normal" style="border-right: 1px solid rgba(255,255,255,0.02)">-</td>`;
+        }
+    }
+    rainRow += `</tr>`;
+    
+    // 5. Wind Velocity Row (Rotated arrows + speed + speed background)
+    let windRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
+    windRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="wind" class="w-3.5 h-3.5 text-cyan-400"></i> Wind (kt)</td>`;
+    for (let h = 0; h < 24; h++) {
+        const speed = charts.wind_speed[h];
+        const dir = charts.wind_direction[h];
+        const angle = getWindAngle(dir);
+        const color = getWindColor(speed);
+        
+        windRow += `<td class="p-1 text-center font-bold" style="background-color: ${color}1e; border-right: 1px solid rgba(255,255,255,0.02)">
+            <div class="flex flex-col items-center justify-center gap-1">
+                <svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" class="w-3.5 h-3.5 transition-transform" style="transform: rotate(${angle}deg);">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <polyline points="19 12 12 19 5 12"></polyline>
+                </svg>
+                <span style="color: ${color}; font-size: 9px;">${Math.round(speed)}</span>
+            </div>
+        </td>`;
+    }
+    windRow += `</tr>`;
+    
+    // 6. Humidity Row (Color-coded text + background tint)
+    let humidityRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
+    humidityRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="droplet" class="w-3.5 h-3.5 text-teal-400"></i> Humidity</td>`;
+    for (let h = 0; h < 24; h++) {
+        const val = charts.humidity[h];
+        const color = getHumidityColor(val);
+        humidityRow += `<td class="p-1 text-center font-bold" style="background-color: ${color}14; color: ${color}; border-right: 1px solid rgba(255,255,255,0.02)">${Math.round(val)}%</td>`;
+    }
+    humidityRow += `</tr>`;
+    
+    // 7. Atmospheric Pressure Row (Color-coded text + background tint)
+    let pressureRow = `<tr class="hover:bg-slate-800/10">`;
+    pressureRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="gauge" class="w-3.5 h-3.5 text-indigo-400"></i> Pressure</td>`;
+    for (let h = 0; h < 24; h++) {
+        const val = charts.pressure[h];
+        const color = getPressureColor(val);
+        pressureRow += `<td class="p-1 text-center font-bold" style="background-color: ${color}14; color: ${color}; border-right: 1px solid rgba(255,255,255,0.02)">${Math.round(val)}</td>`;
+    }
+    pressureRow += `</tr>`;
+    
+    const container = document.getElementById("prognosis-rows-container");
+    if (container) {
+        container.innerHTML = tempRow + lstRow + sstRow + rainRow + windRow + humidityRow + pressureRow;
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
+    }
+}
+
+function updatePrognosisCharts(charts) {
+    if (!charts) return;
+    
+    if (AppState.charts.hourly) {
+        AppState.charts.hourly.updateSeries([{
+            name: 'Rainfall Hourly',
+            data: charts.rainfall
+        }]);
+        AppState.charts.hourly.updateOptions({
+            xaxis: {
+                categories: charts.time
+            }
+        });
+    }
+    
+    if (AppState.charts.trends) {
+        AppState.charts.trends.updateSeries([
+            { name: 'Temperature (°C)', data: charts.temperature, type: 'line' },
+            { name: 'Rainfall (mm)', data: charts.rainfall, type: 'area' }
+        ]);
+        AppState.charts.trends.updateOptions({
+            xaxis: {
+                categories: charts.time
+            }
+        });
+    }
+}
+
+function initWindParticles() {
+    const leftMapContainer = document.getElementById("map-left");
+    if (leftMapContainer && !document.getElementById("wind-canvas-left")) {
+        const canvas = document.createElement("canvas");
+        canvas.id = "wind-canvas-left";
+        canvas.className = "absolute inset-0 w-full h-full pointer-events-none wind-overlay-canvas";
+        canvas.style.zIndex = "400";
+        leftMapContainer.appendChild(canvas);
+        AppState.windCanvasLeft = canvas;
+    }
+    
+    const rightMapContainer = document.getElementById("map-right");
+    if (rightMapContainer && !document.getElementById("wind-canvas-right")) {
+        const canvas = document.createElement("canvas");
+        canvas.id = "wind-canvas-right";
+        canvas.className = "absolute inset-0 w-full h-full pointer-events-none wind-overlay-canvas";
+        canvas.style.zIndex = "400";
+        rightMapContainer.appendChild(canvas);
+        AppState.windCanvasRight = canvas;
+    }
+    
+    AppState.windParticlesActive = true;
+    animateWindParticles();
+}
+
+let cycloneRadarOverlayLeft = null;
+let cycloneRadarOverlayRight = null;
+let cycloneRadarRotation = 0;
+let cycloneInterval = null;
+
+function clearCycloneRadar() {
+    if (cycloneRadarOverlayLeft && AppState.map) {
+        AppState.map.removeLayer(cycloneRadarOverlayLeft);
+        cycloneRadarOverlayLeft = null;
+    }
+    if (cycloneRadarOverlayRight && AppState.mapRight) {
+        AppState.mapRight.removeLayer(cycloneRadarOverlayRight);
+        cycloneRadarOverlayRight = null;
+    }
+}
+
+function updateCycloneRadarOverlay(map, eye, isLeft) {
+    if (!eye) return;
+    
+    const size = 128; // 128x128 canvas is extremely fast to calculate and renders smoothly when scaled
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    const imgData = ctx.createImageData(size, size);
+    const data = imgData.data;
+    
+    const cx = size / 2;
+    const cy = size / 2;
+    const alpha = cycloneRadarRotation;
+    
+    for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+            const dx = x - cx;
+            const dy = y - cy;
+            const r = Math.hypot(dx, dy);
+            
+            if (r > cx - 2) continue;
+            
+            const phi = Math.atan2(dy, dx);
+            const eyeRadius = 9; // eye radius on 128x128 canvas
+            let intensity = 0;
+            
+            if (r >= eyeRadius) {
+                // Spiral arms equation (counter-clockwise spin)
+                const spiralVal = Math.sin(r / 6 - 3 * phi - alpha);
+                
+                // Eyewall peak intensity
+                const eyewall = Math.exp(-Math.pow(r - 14, 2) / 25) * 0.95;
+                
+                // Spiral arms intensity
+                const arms = Math.exp(-Math.pow(r - 40, 2) / 400) * Math.max(0, spiralVal) * 0.75;
+                
+                intensity = Math.max(eyewall, arms);
+            }
+            
+            // Fade out towards the outer edges
+            intensity *= Math.exp(-Math.pow(r / (size * 0.45), 4));
+            
+            const pixelIdx = (y * size + x) * 4;
+            if (intensity > 0.15) {
+                let r_col = 0, g_col = 0, b_col = 0, a_col = 0;
+                
+                if (intensity > 0.8) {
+                    // Eyewall core - intense red/magenta
+                    r_col = 255; g_col = 0; b_col = 128; a_col = Math.floor(intensity * 180);
+                } else if (intensity > 0.6) {
+                    // Inner bands - red
+                    r_col = 239; g_col = 68; b_col = 68; a_col = Math.floor(intensity * 170);
+                } else if (intensity > 0.45) {
+                    // Mid bands - orange/yellow
+                    r_col = 245; g_col = 158; b_col = 11; a_col = Math.floor(intensity * 150);
+                } else if (intensity > 0.3) {
+                    // Outer bands - green
+                    r_col = 16; g_col = 185; b_col = 129; a_col = Math.floor(intensity * 130);
+                } else {
+                    // Outermost bands - blue/cyan
+                    r_col = 6; g_col = 182; b_col = 212; a_col = Math.floor(intensity * 110);
+                }
+                
+                data[pixelIdx] = r_col;
+                data[pixelIdx + 1] = g_col;
+                data[pixelIdx + 2] = b_col;
+                data[pixelIdx + 3] = a_col;
+            } else {
+                data[pixelIdx + 3] = 0; // Transparent
+            }
+        }
+    }
+    
+    ctx.putImageData(imgData, 0, 0);
+    const dataUrl = canvas.toDataURL();
+    
+    const latSpan = 5.0; // 5 degrees latitude wide (approx 550 km)
+    const lngSpan = 5.0;
+    const overlayBounds = [
+        [eye[0] - latSpan/2, eye[1] - lngSpan/2],
+        [eye[0] + latSpan/2, eye[1] + lngSpan/2]
+    ];
+    
+    if (isLeft) {
+        if (cycloneRadarOverlayLeft) {
+            cycloneRadarOverlayLeft.setUrl(dataUrl);
+            cycloneRadarOverlayLeft.setBounds(overlayBounds);
+        } else {
+            cycloneRadarOverlayLeft = L.imageOverlay(dataUrl, overlayBounds, {
+                opacity: 0.75,
+                interactive: false,
+                zIndex: 350
+            }).addTo(map);
+        }
+    } else {
+        if (cycloneRadarOverlayRight) {
+            cycloneRadarOverlayRight.setUrl(dataUrl);
+            cycloneRadarOverlayRight.setBounds(overlayBounds);
+        } else {
+            cycloneRadarOverlayRight = L.imageOverlay(dataUrl, overlayBounds, {
+                opacity: 0.75,
+                interactive: false,
+                zIndex: 350
+            }).addTo(map);
+        }
+    }
+}
+
+function animateWindParticles() {
+    if (!AppState.windParticlesActive) return;
+    
+    requestAnimationFrame(animateWindParticles);
+    
+    const stationsSource = AppState.backendDistricts || DISTRICT_STATIONS;
+    
+    // Update smooth eye movement before drawing
+    if (AppState.cycloneActive && AppState.cycloneEye) {
+        // Track previous eye position to calculate movement delta for particles
+        AppState.prevCycloneEye = [...AppState.cycloneEye];
+
+        if (AppState.cycloneTargetEye) {
+            const currentEye = AppState.cycloneEye;
+            const targetEye = AppState.cycloneTargetEye;
+            
+            const dLat = targetEye[0] - currentEye[0];
+            const dLng = targetEye[1] - currentEye[1];
+            const dist = Math.hypot(dLat, dLng);
+            
+            if (dist > 0.001) {
+                // Move eye 1.5% of the way to the target on each frame
+                AppState.cycloneEye = [
+                    currentEye[0] + dLat * 0.015,
+                    currentEye[1] + dLng * 0.015
+                ];
+            } else {
+                AppState.cycloneEye = targetEye;
+            }
+        }
+    } else {
+        AppState.prevCycloneEye = null;
+    }
+
+    if (AppState.windCanvasLeft && AppState.map) {
+        drawWindCanvas(AppState.windCanvasLeft, AppState.map, stationsSource);
+    }
+    
+    if (AppState.windCanvasRight && AppState.mapRight && AppState.isSplitMode) {
+        drawWindCanvas(AppState.windCanvasRight, AppState.mapRight, stationsSource);
+    }
+
+    // Clean up radar overlays since they are disabled
+    clearCycloneRadar();
+}
+
+function drawWindCanvas(canvas, map, stations) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const mapContainer = map.getContainer();
+    const rect = mapContainer.getBoundingClientRect();
+    if (canvas.width !== rect.width || canvas.height !== rect.height) {
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+        canvas.particles = [];
+    }
+    
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; 
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.globalCompositeOperation = 'source-over';
+    
+    if (!AppState.activeLayers.wind && !AppState.cycloneActive) return;
+    
+    const districtsData = stations.map(d => {
+        const speed = d.wind_speed || d.wind || 0;
+        const dir = d.wind_direction || d.dir || 'SW';
+        const angle = getWindAngle(dir);
+        const angleRad = (angle * Math.PI) / 180;
+        return {
+            lat: d.coords ? d.coords[0] : d.latitude,
+            lng: d.coords ? d.coords[1] : d.longitude,
+            u: -speed * Math.sin(angleRad),
+            v: -speed * Math.cos(angleRad)
+        };
+    });
+    
+    let particles = canvas.particles || [];
+    // Increase density specifically when the cyclone is active
+    const targetMaxParticles = AppState.cycloneActive ? 2500 : 1500;
+    const bounds = map.getBounds();
+    
+    if (particles.length < targetMaxParticles) {
+        const toAdd = targetMaxParticles - particles.length;
+        for (let i = 0; i < toAdd; i++) {
+            particles.push(spawnParticle(bounds));
+        }
+        canvas.particles = particles;
+    } else if (particles.length > targetMaxParticles) {
+        particles.length = targetMaxParticles;
+    }
+    
+    const dt = 0.0003; 
+    
+    // Calculate eye movement delta to apply to cyclone particles
+    let eyeDeltaLat = 0;
+    let eyeDeltaLng = 0;
+    if (AppState.cycloneActive && AppState.cycloneEye && AppState.prevCycloneEye) {
+        eyeDeltaLat = AppState.cycloneEye[0] - AppState.prevCycloneEye[0];
+        eyeDeltaLng = AppState.cycloneEye[1] - AppState.prevCycloneEye[1];
+    }
+    
+    particles.forEach(p => {
+        // If inside the cyclone, first shift the particle by the eye's movement delta
+        if (AppState.cycloneActive && AppState.cycloneEye) {
+            const eyeLat = AppState.cycloneEye[0];
+            const eyeLng = AppState.cycloneEye[1];
+            
+            // Check distance relative to previous eye to apply proper delta tracking
+            const refLat = AppState.prevCycloneEye ? AppState.prevCycloneEye[0] : eyeLat;
+            const refLng = AppState.prevCycloneEye ? AppState.prevCycloneEye[1] : eyeLng;
+            const distToRef = Math.hypot(p.lat - refLat, p.lng - refLng);
+            
+            if (distToRef < 3.5) {
+                p.lat += eyeDeltaLat;
+                p.lng += eyeDeltaLng;
+            }
+        }
+
+        const ptStart = map.latLngToContainerPoint([p.lat, p.lng]);
+        
+        let u = idwInterpolateVector(p.lat, p.lng, 'u', districtsData);
+        let v = idwInterpolateVector(p.lat, p.lng, 'v', districtsData);
+        let isInsideCyclone = false;
+        let dist = 999;
+        
+        if (AppState.cycloneActive && AppState.cycloneEye) {
+            const eyeLat = AppState.cycloneEye[0];
+            const eyeLng = AppState.cycloneEye[1];
+            const dlat = p.lat - eyeLat;
+            const dlng = p.lng - eyeLng;
+            dist = Math.hypot(dlat, dlng);
+            const cycloneRadius = 3.5;
+            
+            if (dist < cycloneRadius) {
+                isInsideCyclone = true;
+                
+                // If particle is too close to the eye, respawn it at the outer edge to prevent bunching in center
+                if (dist < 0.35) {
+                    const r = 2.5 + Math.random() * 1.0; // spawn in outer rings (2.5 to 3.5 deg)
+                    const theta = Math.random() * 2 * Math.PI;
+                    p.lat = AppState.cycloneEye[0] + r * Math.sin(theta);
+                    p.lng = AppState.cycloneEye[1] + r * Math.cos(theta);
+                    p.age = 20 + Math.floor(Math.random() * 30);
+                    return;
+                }
+                
+                const speed = AppState.cycloneWindSpeed || 75;
+                // Swirl speed curve peaking around eyewall (0.6 deg) and dropping off
+                const vt = speed * 1.6 * (dist / (dist + 0.3)) * Math.exp(-dist / 1.8);
+                const vr = -vt * 0.18; // Inward velocity for spiraling effect
+                
+                const cosTheta = dlng / dist;
+                const sinTheta = dlat / dist;
+                
+                const u_spiral = vr * cosTheta - vt * sinTheta;
+                const v_spiral = vr * sinTheta + vt * cosTheta;
+                
+                // Blend with environmental wind at the outer edges of the cyclone
+                let blend = 1.0;
+                if (dist > 2.5) {
+                    blend = Math.max(0.0, 1.0 - (dist - 2.5) / 1.0);
+                }
+                u = u * (1.0 - blend) + u_spiral * blend;
+                v = v * (1.0 - blend) + v_spiral * blend;
+            }
+        }
+        
+        p.lng += u * dt;
+        p.lat += v * dt;
+        p.age--;
+        
+        const ptEnd = map.latLngToContainerPoint([p.lat, p.lng]);
+        const speedVal = Math.hypot(u, v);
+        
+        let opacityMultiplier = 1.0;
+        if (!AppState.activeLayers.wind && AppState.cycloneActive && AppState.cycloneEye) {
+            if (dist > 3.5) {
+                opacityMultiplier = 0.0;
+            } else {
+                opacityMultiplier = 1.0 - (dist / 3.5);
+            }
+        }
+
+        if (p.age > 0 && bounds.contains([p.lat, p.lng]) &&
+            ptStart.x >= 0 && ptStart.x <= canvas.width &&
+            ptStart.y >= 0 && ptStart.y <= canvas.height) {
+            
+            const alphaMultiplier = opacityMultiplier;
+            if (alphaMultiplier > 0) {
+                ctx.beginPath();
+                if (isInsideCyclone) {
+                    // Custom concentric color palette & size profile (glowing white, cyan, sky blue, indigo. NO red!)
+                    let dotColor;
+                    let dotRadius;
+                    
+                    if (dist < 0.8) {
+                        // Eyewall core - intense glowing white/cyan
+                        dotColor = `rgba(255, 255, 255, ${0.95 * alphaMultiplier})`;
+                        dotRadius = 2.0;
+                    } else if (dist < 1.6) {
+                        // Inner swirling band - cyan
+                        dotColor = `rgba(34, 211, 238, ${0.85 * alphaMultiplier})`;
+                        dotRadius = 1.6;
+                    } else if (dist < 2.5) {
+                        // Middle swirling band - sky blue
+                        dotColor = `rgba(56, 189, 248, ${0.75 * alphaMultiplier})`;
+                        dotRadius = 1.3;
+                    } else {
+                        // Outer band - deep blue/indigo
+                        dotColor = `rgba(99, 102, 241, ${0.6 * alphaMultiplier})`;
+                        dotRadius = 1.1;
+                    }
+                    
+                    ctx.arc(ptEnd.x, ptEnd.y, dotRadius, 0, 2 * Math.PI);
+                    ctx.fillStyle = dotColor;
+                    ctx.fill();
+                } else {
+                    let baseColor;
+                    if (speedVal < 10) {
+                        baseColor = [255, 255, 255, 0.45];
+                    } else if (speedVal < 18) {
+                        baseColor = [34, 211, 238, 0.65]; 
+                    } else if (speedVal < 26) {
+                        baseColor = [163, 230, 53, 0.75]; 
+                    } else {
+                        baseColor = [245, 158, 11, 0.8]; // Orange/amber instead of red for environmental high winds
+                    }
+                    ctx.moveTo(ptStart.x, ptStart.y);
+                    ctx.lineTo(ptEnd.x, ptEnd.y);
+                    ctx.lineWidth = 1.0;
+                    ctx.strokeStyle = `rgba(${baseColor[0]}, ${baseColor[1]}, ${baseColor[2]}, ${baseColor[3] * alphaMultiplier})`;
+                    ctx.stroke();
+                }
+            }
+        } else {
+            const respawned = spawnParticle(bounds);
+            p.lat = respawned.lat;
+            p.lng = respawned.lng;
+            p.age = respawned.age;
+        }
+    });
+}
+
+function spawnParticle(bounds) {
+    if (AppState.cycloneActive && AppState.cycloneEye) {
+        // Spawn 65% of new particles inside the cyclone to keep it dense, 35% elsewhere
+        if (Math.random() < 0.65 || !AppState.activeLayers.wind) {
+            const r = Math.random() * 3.5; 
+            const theta = Math.random() * 2 * Math.PI;
+            return {
+                lat: AppState.cycloneEye[0] + r * Math.sin(theta),
+                lng: AppState.cycloneEye[1] + r * Math.cos(theta),
+                age: 20 + Math.floor(Math.random() * 40)
+            };
+        }
+    }
+    const lat = bounds.getSouth() + Math.random() * (bounds.getNorth() - bounds.getSouth());
+    const lng = bounds.getWest() + Math.random() * (bounds.getEast() - bounds.getWest());
+    return {
+        lat: lat,
+        lng: lng,
+        age: 25 + Math.floor(Math.random() * 45)
+    };
+}
+
+function idwInterpolateVector(lat, lng, key, districtsData) {
+    let totalWeight = 0, totalValue = 0;
+    districtsData.forEach(d => {
+        const dlat = lat - d.lat;
+        const dlng = lng - d.lng;
+        const dist2 = dlat * dlat + dlng * dlng;
+        const weight = dist2 < 0.00001 ? 1e12 : 1.0 / (dist2 * dist2);
+        totalWeight += weight;
+        totalValue += weight * (d[key] || 0);
+    });
+    return totalWeight > 0 ? totalValue / totalWeight : 0;
+}
+
+// ─── Cyclone Overlay Renderers ──────────────────────────────────────────────
+
+function drawCycloneOverlay(cyclone) {
+    if (AppState.cycloneLayers) {
+        AppState.cycloneLayers.forEach(l => AppState.map.removeLayer(l));
+    }
+    AppState.cycloneLayers = [];
+    
+    if (AppState.cycloneLayersRight && AppState.mapRight) {
+        AppState.cycloneLayersRight.forEach(l => AppState.mapRight.removeLayer(l));
+    }
+    AppState.cycloneLayersRight = [];
+
+    if (!cyclone || !cyclone.active) {
+        AppState.cycloneActive = false;
+        AppState.cycloneEye = null;
+        AppState.cycloneTargetEye = null;
+        return;
+    }
+
+    AppState.cycloneActive = true;
+    AppState.cycloneTargetEye = cyclone.eye;
+    
+    // Initialize eye if it doesn't exist yet, to prevent jumping from [0,0]
+    if (!AppState.cycloneEye) {
+        AppState.cycloneEye = [...cyclone.eye];
+    }
+    AppState.cycloneWindSpeed = cyclone.wind_speed_kt;
+
+    addCycloneToMap(AppState.map, cyclone, AppState.cycloneLayers);
+
+    if (AppState.mapRight && AppState.isSplitMode) {
+        addCycloneToMap(AppState.mapRight, cyclone, AppState.cycloneLayersRight);
+    }
+}
+
+function addCycloneToMap(map, cyclone, layerList) {
+    // Cyclone wind particles and dynamic overlays are handled directly on the wind canvas and image overlays.
+}
+
+// ─── Playback Cycle Control ──────────────────────────────────────────────────
+
+let playbackInterval = null;
+
+function startPlayback() {
+    if (AppState.playback.isPlaying) return;
+    
+    AppState.playback.isPlaying = true;
+    document.getElementById("pb-play-btn")?.classList.add("hidden");
+    document.getElementById("pb-pause-btn")?.classList.remove("hidden");
+    
+    runPlaybackCycle();
+}
+
+function pausePlayback() {
+    AppState.playback.isPlaying = false;
+    document.getElementById("pb-play-btn")?.classList.remove("hidden");
+    document.getElementById("pb-pause-btn")?.classList.add("hidden");
+    if (playbackInterval) {
+        clearTimeout(playbackInterval);
+        playbackInterval = null;
+    }
+}
+
+function stopPlayback() {
+    pausePlayback();
+    AppState.timeHour = 0;
+    updateTimeNavigationState();
+}
+
+function resetPlayback() {
+    stopPlayback();
+}
+
+async function runPlaybackCycle() {
+    if (!AppState.playback.isPlaying) return;
+    
+    AppState.timeHour++;
+    if (AppState.timeHour > 23) {
+        AppState.timeHour = 0;
+        AppState.timeDay++;
+        const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
+        if (AppState.timeDay > maxDays) {
+            AppState.timeDay = 1;
+            AppState.timeMonth++;
+            if (AppState.timeMonth > 12) {
+                AppState.timeMonth = 1;
+                AppState.timeYear++;
+            }
+        }
+        document.getElementById("cal-year").value = AppState.timeYear;
+        document.getElementById("cal-month").value = AppState.timeMonth;
+        populateCalendarDays();
+        document.getElementById("cal-day").value = AppState.timeDay;
+    }
+    
+    const startTime = Date.now();
+    try {
+        await updateTimeNavigationState();
+    } catch (e) {
+        console.error("Playback fetch failed in cycle:", e);
+    }
+    
+    const elapsed = Date.now() - startTime;
+    const speedMs = 1800 / AppState.playback.speed;
+    const delay = Math.max(50, speedMs - elapsed);
+    
+    playbackInterval = setTimeout(runPlaybackCycle, delay);
+}
+
+// ─── Visual Hazard Renderings ────────────────────────────────────────────────
+function clearHazards() {
+    AppState.hazardLayers.forEach(l => AppState.map.removeLayer(l));
+    AppState.hazardLayers = [];
+    
+    if (AppState.mapRight) {
+        AppState.hazardLayersRight.forEach(l => AppState.mapRight.removeLayer(l));
+        AppState.hazardLayersRight = [];
+    }
+
+    if (AppState.districtLayer) {
+        AppState.districtLayer.setStyle({ color: '#ffffff', fillColor: 'transparent', fillOpacity: 0 });
+    }
+    if (AppState.districtLayerRight) {
+        AppState.districtLayerRight.setStyle({ color: '#ffffff', fillColor: 'transparent', fillOpacity: 0 });
+    }
+
+    // Reset cyclone state
+    AppState.cycloneActive = false;
+    AppState.cycloneEye = null;
+    AppState.cycloneTargetEye = null;
+    if (cycloneInterval) {
+        clearInterval(cycloneInterval);
+        cycloneInterval = null;
+    }
+    clearCycloneRadar();
+}
+
+function updateVisualHazards() {
+    clearHazards();
+
+    const scenario = AppState.activeScenario;
+    if (!scenario) return;
+
+    if (scenario === 'cyclone') {
+        const trackPoints = [
+            [14.0, 83.5], 
+            [15.2, 82.8],
+            [16.4, 82.1],
+            [17.68, 83.21] 
+        ];
+
+        AppState.cycloneActive = true;
+        AppState.cycloneWindSpeed = 75;
+        
+        // Initialize eye coordinates. They will be driven dynamically by the timeline.
+        if (!AppState.cycloneEye) {
+            AppState.cycloneEye = [...trackPoints[0]];
+        }
+        AppState.cycloneTargetEye = [...trackPoints[0]];
+    } else if (scenario === 'flood') {
+        const floodStyle = { fillColor: '#3b82f6', fillOpacity: 0.35, color: '#2563eb', weight: 3 };
+        
+        if (AppState.districtLayer) {
+            AppState.districtLayer.setStyle(feature => {
+                const name = feature.properties.NAME_1 || feature.properties.state_name || feature.properties.STNAME || "";
+                if (["Krishna", "Guntur", "Godavari"].some(d => name.toLowerCase().includes(d.toLowerCase()))) {
+                    return floodStyle;
+                }
+                return { fillColor: 'transparent', fillOpacity: 0, color: '#ffffff', weight: 1 };
+            });
+        }
+        
+        if (AppState.mapRight && AppState.isSplitMode && AppState.districtLayerRight) {
+            AppState.districtLayerRight.setStyle(feature => {
+                const name = feature.properties.NAME_1 || feature.properties.state_name || feature.properties.STNAME || "";
+                if (["Krishna", "Guntur", "Godavari"].some(d => name.toLowerCase().includes(d.toLowerCase()))) {
+                    return floodStyle;
+                }
+                return { fillColor: 'transparent', fillOpacity: 0, color: '#ffffff', weight: 1 };
+            });
+        }
+
+    } else if (scenario === 'drought') {
+        const droughtStyle = { fillColor: '#b45309', fillOpacity: 0.35, color: '#d97706', weight: 3 };
+        
+        if (AppState.districtLayer) {
+            AppState.districtLayer.setStyle(feature => {
+                const name = feature.properties.NAME_1 || feature.properties.state_name || feature.properties.STNAME || "";
+                if (["Anantapur", "Kurnool", "Kadapa"].some(d => name.toLowerCase().includes(d.toLowerCase()))) {
+                    return droughtStyle;
+                }
+                return { fillColor: 'transparent', fillOpacity: 0, color: '#ffffff', weight: 1 };
+            });
+        }
+
+        if (AppState.mapRight && AppState.isSplitMode && AppState.districtLayerRight) {
+            AppState.districtLayerRight.setStyle(feature => {
+                const name = feature.properties.NAME_1 || feature.properties.state_name || feature.properties.STNAME || "";
+                if (["Anantapur", "Kurnool", "Kadapa"].some(d => name.toLowerCase().includes(d.toLowerCase()))) {
+                    return droughtStyle;
+                }
+                return { fillColor: 'transparent', fillOpacity: 0, color: '#ffffff', weight: 1 };
+            });
+        }
+    }
+}
+
+// ─── Digital Twin Evolution Mode ──────────────────────────────────────────────
+function triggerEvolutionMode() {
+    if (AppState.isEvolutionMode) return;
+    AppState.isEvolutionMode = true;
+
+    showNotification("Digital Twin Evolution", "Initiating multi-era climate progression.", "success");
+
+    let era = 0;
+    const eras = ['past', 'present', 'future', 'scenario'];
+    
+    const interval = setInterval(() => {
+        if (!AppState.isEvolutionMode) {
+            clearInterval(interval);
+            return;
+        }
+
+        const currentEra = eras[era];
+        if (currentEra === 'scenario') {
+            showNotification("Evolution Stage", "Phase 4: Simulated Extreme Heatwave Scenario (+4.5°C)", "warning");
+            triggerScenarioPreset('heatwave');
+        } else {
+            setTimeline(currentEra);
+            const slider = document.getElementById("timelineRange");
+            if (slider) slider.value = era;
+            showNotification("Evolution Stage", `Phase ${era + 1}: ${currentEra.toUpperCase()} climate state`, "success");
+        }
+
+        era++;
+        if (era >= eras.length) {
+            clearInterval(interval);
+            AppState.isEvolutionMode = false;
+            showNotification("Evolution Complete", "Atmospheric timeline re-synchronized to operational mode.", "success");
+            resetPlayback();
+        }
+    }, 4500);
+}
+
+function showNotification(title, message, type = 'info') {
+    const alertId = Date.now();
+    const container = document.getElementById("alerts-container");
+    
+    let badgeClass = "badge-low";
+    if (type === "warning") badgeClass = "badge-high";
+    else if (type === "error" || type === "critical") badgeClass = "badge-critical";
+    else if (type === "success") badgeClass = "badge-low"; 
+
+    const html = `
+        <div id="toast-${alertId}" class="p-3 bg-navy-800/90 rounded border border-slate-700/60 shadow-xl flex flex-col gap-1 transition duration-300 transform translate-y-2 opacity-0">
+            <div class="flex items-center justify-between">
+                <span class="${badgeClass} text-[9px] px-1.5 py-0.5 rounded uppercase font-bold tracking-wider">${type}</span>
+                <span class="text-[10px] text-cyan-400 font-display font-medium">${title}</span>
+            </div>
+            <p class="text-[11px] text-slate-300 leading-normal mt-1">${message}</p>
+        </div>
+    `;
+
+    if (container) {
+        container.insertAdjacentHTML('afterbegin', html);
+        const toast = document.getElementById(`toast-${alertId}`);
+        gsap.to(toast, { opacity: 1, y: 0, duration: 0.3 });
+        
+        setTimeout(() => {
+            gsap.to(toast, { opacity: 0, y: -10, duration: 0.3, onComplete: () => toast.remove() });
+        }, 4000);
+    }
+}
+
+function triggerScenarioPreset(scenario) {
+    AppState.activeScenario = scenario;
+
+    document.querySelectorAll(".scenario-btn").forEach(btn => {
+        btn.classList.remove("bg-cyan-500/20", "border-cyan-500/50");
+        btn.style.boxShadow = "";
+    });
+
+    const activeBtn = document.querySelector(`.scenario-btn[data-scenario="${scenario}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add("bg-cyan-500/20", "border-cyan-500/50");
+        activeBtn.style.boxShadow = "0 0 10px rgba(0, 210, 255, 0.2) inset";
+    }
+
+    let temp = 0.0, rain = 0, hum = 0;
+    if (scenario === 'heatwave') { temp = 4.5; rain = -30; hum = -10; AppState.activeLayers.temperature = true; }
+    else if (scenario === 'cyclone') { temp = 1.0; rain = 35; hum = 15; AppState.activeLayers.wind = true; }
+    else if (scenario === 'flood') { temp = -0.5; rain = 40; hum = 10; AppState.activeLayers.rainfall = true; }
+    else if (scenario === 'drought') { temp = 3.0; rain = -50; hum = -15; AppState.activeLayers.humidity = true; }
+    else if (scenario === 'uhi') { temp = 2.5; rain = -5; hum = -5; AppState.activeLayers.temperature = true; }
+    else if (scenario === 'monsoon') { temp = 1.5; rain = -25; hum = -8; AppState.activeLayers.rainfall = true; }
+
+    AppState.simulator.temp = temp;
+    AppState.simulator.rain = rain;
+    AppState.simulator.humidity = hum;
+
+    const tempSlider = document.getElementById("sim-temp");
+    if (tempSlider) tempSlider.value = temp;
+    const tempVal = document.getElementById("sim-temp-val");
+    if (tempVal) tempVal.innerText = (temp > 0 ? '+' : '') + temp.toFixed(1) + '°C';
+
+    const rainSlider = document.getElementById("sim-rain");
+    if (rainSlider) rainSlider.value = rain;
+    const rainVal = document.getElementById("sim-rain-val");
+    if (rainVal) rainVal.innerText = (rain > 0 ? '+' : '') + rain + '%';
+
+    const humSlider = document.getElementById("sim-humidity");
+    if (humSlider) humSlider.value = hum;
+    const humVal = document.getElementById("sim-humidity-val");
+    if (humVal) humVal.innerText = (hum > 0 ? '+' : '') + hum + '%';
+
+    syncLayerButtonsUI();
+    updateMapLegend();
+    updateVisualHazards();
+    triggerSimulation();
 }

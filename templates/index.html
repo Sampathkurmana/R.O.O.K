@@ -2,10 +2,13 @@
 {% load static %}
 
 {% block content %}
-<div class="relative w-screen h-screen overflow-hidden font-sans main-layout select-none" data-active-panel="{{ active_panel }}">
+<div class="relative w-screen h-screen overflow-hidden font-sans main-layout select-none sidebar-expanded" id="app-container" data-active-panel="{{ active_panel }}">
     
-    <!-- Hero Geospatial Map Container -->
-    <div id="map" class="absolute inset-0 w-full h-full z-0"></div>
+    <!-- Hero Geospatial Map Containers (Single or Split) -->
+    <div id="map-container" class="absolute inset-0 w-full h-full z-0 flex transition-all duration-500">
+        <div id="map-left" class="w-full h-full transition-all duration-500"></div>
+        <div id="map-right" class="w-0 h-full overflow-hidden transition-all duration-500 border-l border-slate-800/80"></div>
+    </div>
 
     <!-- Vignette / Dark Moody Overlay for Map -->
     <div class="map-overlay-vignette"></div>
@@ -14,7 +17,7 @@
     <div class="absolute inset-0 pointer-events-none border border-slate-500/5 z-10"></div>
 
     <!-- TOP NAVIGATION: Floating Glass Header -->
-    <header class="absolute top-4 left-72 right-4 h-16 z-10 flex items-center justify-between px-6 glass-panel rounded-xl">
+    <header id="top-header" class="absolute top-4 left-72 right-4 h-16 z-10 flex items-center justify-between px-6 glass-panel rounded-xl transition-all duration-300">
         <!-- Search Bar -->
         <div class="relative w-72">
             <input type="text" id="search-input" placeholder="Search city or district..." class="w-full h-9 bg-navy-950/40 border border-slate-800/40 rounded-lg px-4 pl-9 text-xs focus:outline-none focus:border-cyan-500 text-slate-200 transition-colors">
@@ -46,85 +49,91 @@
                 <i data-lucide="chevron-down" class="w-3.5 h-3.5 text-slate-400"></i>
             </button>
 
+            <!-- Split Comparison Mode Toggle -->
+            <button id="split-screen-toggle-btn" class="w-9 h-9 rounded-lg bg-navy-950/50 hover:bg-navy-950/80 border border-slate-800/60 flex items-center justify-center text-slate-400 hover:text-cyan-400 transition-colors" title="Toggle Split Screen Comparison">
+                <i data-lucide="columns-2" class="w-4 h-4"></i>
+            </button>
+
             <!-- Hamburger Button -->
-            <button class="w-9 h-9 rounded-lg bg-navy-950/50 hover:bg-navy-950/80 border border-slate-800/60 flex items-center justify-center text-slate-300">
+            <button id="sidebar-toggle-btn" class="w-9 h-9 rounded-lg bg-navy-950/50 hover:bg-navy-950/80 border border-slate-800/60 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-colors" title="Toggle Sidebar">
                 <i data-lucide="menu" class="w-4 h-4"></i>
             </button>
         </div>
     </header>
 
     <!-- FLOATING SIDEBAR: Left Navigation -->
-    <aside class="absolute left-4 top-4 bottom-4 w-64 z-20 glass-panel rounded-xl flex flex-col p-4">
+    <aside id="sidebar" class="absolute left-4 top-4 bottom-4 w-64 z-20 glass-panel rounded-xl flex flex-col p-4 transition-all duration-300">
         <!-- Logo and Project Info -->
-        <div class="flex flex-col items-center mb-5 border-b border-slate-800/40 pb-4 gap-1.5">
+        <div id="sidebar-logo-container" class="flex flex-col items-center mb-5 border-b border-slate-800/40 pb-4 gap-1.5 overflow-hidden">
             <!-- PNG Logo -->
             <div class="logo-img-wrapper w-full flex items-center justify-center">
                 <img src="{% static 'logo.png' %}" alt="R.O.O.K Logo"
-                     class="rook-logo-img w-full max-w-[170px] h-auto object-contain drop-shadow-lg select-none" draggable="false">
+                     class="rook-logo-img w-full max-w-[170px] h-auto object-contain drop-shadow-lg select-none transition-all duration-300" id="sidebar-logo-img" draggable="false">
+                <div class="hidden font-display font-black text-cyan-400 text-lg tracking-wider" id="sidebar-logo-compact">R</div>
             </div>
             <!-- Animated Full Form Title -->
-            <h1 id="rook-fullform" class="rook-fullform-text text-[9px] uppercase tracking-[0.15em] text-center font-black font-display leading-relaxed mt-1 select-none">
+            <h1 id="rook-fullform" class="rook-fullform-text text-[9px] uppercase tracking-[0.15em] text-center font-black font-display leading-relaxed mt-1 select-none sidebar-text">
                 Resilient · Observation · Outlook · Kernel
             </h1>
         </div>
 
         <!-- Sidebar Navigation Menu -->
-        <div class="flex-1 flex flex-col gap-1 overflow-y-auto pr-1">
-            <a href="#" data-panel="dashboard" class="nav-item active flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="home" class="w-4.5 h-4.5"></i>
-                <span>Home</span>
+        <div class="flex-1 flex flex-col gap-1 overflow-y-auto pr-1 select-none" id="sidebar-menu">
+            <a href="#" data-panel="dashboard" class="nav-item active flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Home">
+                <i data-lucide="home" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Home</span>
             </a>
-            <a href="#" data-panel="weather" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="cloud-sun" class="w-4.5 h-4.5"></i>
-                <span>Live Weather</span>
+            <a href="#" data-panel="weather" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Live Weather">
+                <i data-lucide="cloud-sun" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Live Weather</span>
             </a>
-            <a href="#" data-panel="forecast" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="cloud-rain" class="w-4.5 h-4.5"></i>
-                <span>Forecast</span>
+            <a href="#" data-panel="forecast" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Forecast">
+                <i data-lucide="cloud-rain" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Forecast</span>
             </a>
-            <a href="#" data-panel="analytics" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="bar-chart-3" class="w-4.5 h-4.5"></i>
-                <span>Analytics</span>
+            <a href="#" data-panel="analytics" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Analytics">
+                <i data-lucide="bar-chart-3" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Analytics</span>
             </a>
 
-            <a href="#" data-panel="simulator" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="sliders" class="w-4.5 h-4.5"></i>
-                <span>Scenario Simulator</span>
+            <a href="#" data-panel="simulator" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Scenario Simulator">
+                <i data-lucide="sliders" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Scenario Simulator</span>
             </a>
-            <a href="#" data-panel="satellite" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="globe" class="w-4.5 h-4.5"></i>
-                <span>Satellite View</span>
+            <a href="#" data-panel="satellite" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Satellite View">
+                <i data-lucide="globe" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Satellite View</span>
             </a>
-            <a href="#" data-panel="alerts" class="nav-item flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
+            <a href="#" data-panel="alerts" class="nav-item flex items-center justify-between px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Alerts">
                 <div class="flex items-center gap-3">
-                    <i data-lucide="bell" class="w-4.5 h-4.5"></i>
-                    <span>Alerts</span>
+                    <i data-lucide="bell" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                    <span class="sidebar-text">Alerts</span>
                 </div>
-                <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                <span class="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping flex-shrink-0"></span>
             </a>
-            <a href="#" data-panel="reports" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="file-text" class="w-4.5 h-4.5"></i>
-                <span>Reports</span>
+            <a href="#" data-panel="reports" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Reports">
+                <i data-lucide="file-text" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Reports</span>
             </a>
 
-            <a href="#" data-panel="settings" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="settings" class="w-4.5 h-4.5"></i>
-                <span>Settings</span>
+            <a href="#" data-panel="settings" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Settings">
+                <i data-lucide="settings" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Settings</span>
             </a>
-            <a href="#" data-panel="about" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300">
-                <i data-lucide="info" class="w-4.5 h-4.5"></i>
-                <span>About</span>
+            <a href="#" data-panel="about" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="About">
+                <i data-lucide="info" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">About</span>
             </a>
         </div>
 
         <!-- Sidebar Footer -->
-        <div class="mt-auto pt-4 border-t border-slate-800/40 flex items-center justify-between text-[10px] text-slate-500">
-            <div class="flex flex-col">
+        <div class="mt-auto pt-4 border-t border-slate-800/40 flex items-center justify-between text-[10px] text-slate-500 overflow-hidden" id="sidebar-footer">
+            <div class="flex flex-col sidebar-text">
                 <span class="font-semibold text-slate-400 uppercase tracking-wider text-[8px]">Last Updated</span>
                 <span id="last-updated-time">21 Jun 2025, 11:00 AM IST</span>
             </div>
-            <button onclick="refreshData()" class="hover:text-cyan-400 transition-colors" title="Force refresh feeds">
-                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            <button onclick="refreshData()" class="hover:text-cyan-400 transition-colors mx-auto" title="Force refresh feeds">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5 flex-shrink-0"></i>
             </button>
         </div>
     </aside>
@@ -142,49 +151,293 @@
         </button>
     </div>
 
-    <!-- Bottom Weather Layer Selector (Windy-Style Horizontal Bar) -->
-    <div id="map-layers-panel" class="absolute z-20 pointer-events-auto hidden" style="bottom: 18px; left: 50%; transform: translateX(-50%);">
-        <div class="flex items-center glass-panel border border-slate-700/50 overflow-hidden" style="border-radius: 16px; backdrop-filter: blur(28px);">
-            
-            <!-- Satellite (independent toggle, visually separated) -->
-            <button data-layer="satellite" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="border-right: 1px solid rgba(100,116,139,0.3); min-width: 72px;">
-                <i data-lucide="globe" class="w-4 h-4"></i>
-                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;">Satellite</span>
-            </button>
 
-            <!-- Weather layers (mutually exclusive) -->
-            <button data-layer="wind" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 68px;">
-                <i data-lucide="wind" class="w-4 h-4"></i>
-                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Wind</span>
-            </button>
-
-            <button data-layer="rainfall" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 68px;">
-                <i data-lucide="cloud-rain" class="w-4 h-4"></i>
-                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Rain</span>
-            </button>
-
-            <button data-layer="temperature" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 80px;">
-                <i data-lucide="thermometer" class="w-4 h-4"></i>
-                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Temperature</span>
-            </button>
-
-            <button data-layer="pressure" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 76px;">
-                <i data-lucide="gauge" class="w-4 h-4"></i>
-                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Pressure</span>
-            </button>
-
-            <button data-layer="humidity" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 76px;">
-                <i data-lucide="droplet" class="w-4 h-4"></i>
-                <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Humidity</span>
-            </button>
-        </div>
-    </div>
 
     <!-- Active Variable Heatmap Legend (Color Scale Bar, above bottom selector) -->
     <div id="map-legend" class="absolute z-10 glass-panel rounded-xl px-3 py-2.5 shadow-lg border border-slate-800/80 pointer-events-auto" style="bottom: 96px; right: 16px; min-width: 150px;">
         <!-- Filled dynamically by updateMapLegend() -->
     </div>
 
+    <!-- BOTTOM CENTER CONTROLS GROUP (Centered between sidebars) -->
+    <div id="playback-panel-wrapper" class="absolute z-20 pointer-events-none flex flex-col items-center gap-3 transition-all duration-300" style="bottom: 16px; left: 272px; right: 400px;">
+        
+        <!-- Bottom Weather Layer Selector (Windy-Style Horizontal Bar) -->
+        <div id="map-layers-panel" class="pointer-events-auto hidden">
+            <div class="flex items-center glass-panel border border-slate-700/50 overflow-hidden" style="border-radius: 16px; backdrop-filter: blur(28px);">
+                
+                <!-- Satellite (independent toggle, visually separated) -->
+                <button data-layer="satellite" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="border-right: 1px solid rgba(100,116,139,0.3); min-width: 72px;">
+                    <i data-lucide="globe" class="w-4 h-4"></i>
+                    <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; white-space: nowrap;">Satellite</span>
+                </button>
+
+                <!-- Weather layers (mutually exclusive) -->
+                <button data-layer="wind" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 68px;">
+                    <i data-lucide="wind" class="w-4 h-4"></i>
+                    <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Wind</span>
+                </button>
+
+                <button data-layer="rainfall" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 68px;">
+                    <i data-lucide="cloud-rain" class="w-4 h-4"></i>
+                    <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Rain</span>
+                </button>
+
+                <button data-layer="temperature" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 80px;">
+                    <i data-lucide="thermometer" class="w-4 h-4"></i>
+                    <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Temperature</span>
+                </button>
+
+                <button data-layer="pressure" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 76px;">
+                    <i data-lucide="gauge" class="w-4 h-4"></i>
+                    <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Pressure</span>
+                </button>
+
+                <button data-layer="humidity" class="layer-btn flex flex-col items-center justify-center gap-1.5 px-5 py-3 text-slate-400 transition-all duration-200 hover:text-white" style="min-width: 76px;">
+                    <i data-lucide="droplet" class="w-4 h-4"></i>
+                    <span style="font-size: 8px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;">Humidity</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- BOTTOM TIME NAVIGATION PANEL -->
+        <div id="playback-panel" class="pointer-events-auto flex flex-col gap-3.5 glass-panel border border-slate-700/50 p-4 rounded-xl hidden" style="width: 780px; max-width: 100%; backdrop-filter: blur(28px);">
+        
+        <!-- TOP ROW: Mode Selector & Calendar Selector & Playback Controls -->
+        <div class="flex flex-wrap items-center justify-between gap-y-2 gap-x-4 border-b border-slate-800/40 pb-3">
+            
+            <!-- Left: Mode Selector -->
+            <div class="flex items-center gap-1 bg-navy-950/60 p-1 rounded-lg border border-slate-800/80">
+                <button id="mode-history" class="time-mode-btn px-2.5 py-1 text-[10px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">Historical</button>
+                <button id="mode-live" class="time-mode-btn px-2.5 py-1 text-[10px] font-bold rounded uppercase tracking-wider bg-cyan-500 text-navy-900 transition-all">Live</button>
+                <button id="mode-forecast" class="time-mode-btn px-2.5 py-1 text-[10px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">Forecast</button>
+                <button id="mode-scenario" class="time-mode-btn px-2.5 py-1 text-[10px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">Scenario</button>
+            </div>
+
+            <!-- Middle: Calendar Selector -->
+            <div class="flex items-center gap-1.5">
+                <select id="cal-year" class="bg-navy-950/80 border border-slate-800 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-cyan-500">
+                    <option value="2025">2025</option>
+                    <option value="2026" selected>2026</option>
+                    <option value="2027">2027</option>
+                </select>
+                <select id="cal-month" class="bg-navy-950/80 border border-slate-800 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-cyan-500">
+                    <option value="1">January</option>
+                    <option value="2">February</option>
+                    <option value="3">March</option>
+                    <option value="4">April</option>
+                    <option value="5">May</option>
+                    <option value="6" selected>June</option>
+                    <option value="7">July</option>
+                    <option value="8">August</option>
+                    <option value="9">September</option>
+                    <option value="10">October</option>
+                    <option value="11">November</option>
+                    <option value="12">December</option>
+                </select>
+                <select id="cal-day" class="bg-navy-950/80 border border-slate-800 text-slate-200 text-xs rounded px-2 py-1 focus:outline-none focus:border-cyan-500">
+                    <!-- Populated dynamically via JS -->
+                </select>
+            </div>
+
+            <!-- Right: Playback Controls -->
+            <div class="flex items-center gap-1.5">
+                <button id="pb-prev-btn" class="w-7 h-7 rounded bg-navy-950/60 hover:bg-navy-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-colors" title="Previous Hour">
+                    <i data-lucide="chevron-left" class="w-3.5 h-3.5"></i>
+                </button>
+                <button id="pb-play-btn" class="w-7 h-7 rounded bg-cyan-500 hover:bg-cyan-600 text-navy-900 flex items-center justify-center transition-colors" title="Play">
+                    <i data-lucide="play" class="w-3.5 h-3.5 fill-navy-900"></i>
+                </button>
+                <button id="pb-pause-btn" class="w-7 h-7 rounded bg-navy-950/60 hover:bg-navy-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-colors hidden" title="Pause">
+                    <i data-lucide="pause" class="w-3.5 h-3.5 fill-current"></i>
+                </button>
+                <button id="pb-stop-btn" class="w-7 h-7 rounded bg-navy-950/60 hover:bg-navy-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-colors" title="Stop">
+                    <i data-lucide="square" class="w-3.5 h-3.5 fill-current"></i>
+                </button>
+                <button id="pb-next-btn" class="w-7 h-7 rounded bg-navy-950/60 hover:bg-navy-900 border border-slate-800 flex items-center justify-center text-slate-300 hover:text-cyan-400 transition-colors" title="Next Hour">
+                    <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+                </button>
+                
+                <!-- Speed Selector -->
+                <div class="flex rounded overflow-hidden border border-slate-800 bg-navy-950/50 p-0.5 ml-1">
+                    <button data-speed="1" class="pb-speed-btn px-1.5 py-0.5 text-[8px] font-bold bg-cyan-500 text-navy-900 transition-all">1x</button>
+                    <button data-speed="2" class="pb-speed-btn px-1.5 py-0.5 text-[8px] font-bold text-slate-400 hover:text-white transition-all">2x</button>
+                    <button data-speed="5" class="pb-speed-btn px-1.5 py-0.5 text-[8px] font-bold text-slate-400 hover:text-white transition-all">5x</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- MIDDLE ROW: Time display and details -->
+        <div class="flex items-center justify-between px-2">
+            <!-- Digital clock font time indicator -->
+            <div class="flex items-center gap-2">
+                <i data-lucide="clock" class="w-4 h-4 text-cyan-400 animate-pulse"></i>
+                <span id="active-datetime-display" class="font-display font-black text-sm text-cyan-400 tracking-wider uppercase">15 Jun 2026, 11:00 IST</span>
+            </div>
+            
+            <!-- Model/Source operational indicator -->
+            <div id="model-source-badge" class="text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                ⚡ XGBoost Model Active
+            </div>
+        </div>
+
+        <!-- BOTTOM ROW: 24-Hour dual row timeline -->
+        <div class="flex flex-col gap-3 relative w-full px-2 pt-1">
+            <!-- Row 1: 00 - 11 -->
+            <div class="flex items-center justify-between relative">
+                <!-- Row Line -->
+                <div class="absolute left-3 right-3 top-2.5 h-[1px] bg-slate-800/80 z-0"></div>
+                <!-- Progress Line -->
+                <div id="timeline-progress-row1" class="absolute left-3 top-2.5 h-[1.5px] bg-cyan-500/80 z-0 transition-all duration-300" style="width: 0%;"></div>
+                
+                <!-- Hour Dots -->
+                <div class="timeline-hour-wrapper z-10 flex justify-between w-full">
+                    <!-- Hours 00 to 11 -->
+                    <span data-hour="0" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">00</span>
+                    </span>
+                    <span data-hour="1" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">01</span>
+                    </span>
+                    <span data-hour="2" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">02</span>
+                    </span>
+                    <span data-hour="3" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">03</span>
+                    </span>
+                    <span data-hour="4" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">04</span>
+                    </span>
+                    <span data-hour="5" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">05</span>
+                    </span>
+                    <span data-hour="6" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">06</span>
+                    </span>
+                    <span data-hour="7" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">07</span>
+                    </span>
+                    <span data-hour="8" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">08</span>
+                    </span>
+                    <span data-hour="9" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">09</span>
+                    </span>
+                    <span data-hour="10" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">10</span>
+                    </span>
+                    <span data-hour="11" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">11</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Row 2: 12 - 23 -->
+            <div class="flex items-center justify-between relative mt-1">
+                <!-- Row Line -->
+                <div class="absolute left-3 right-3 top-2.5 h-[1px] bg-slate-800/80 z-0"></div>
+                <!-- Progress Line -->
+                <div id="timeline-progress-row2" class="absolute left-3 top-2.5 h-[1.5px] bg-cyan-500/80 z-0 transition-all duration-300" style="width: 0%;"></div>
+                
+                <div class="timeline-hour-wrapper z-10 flex justify-between w-full">
+                    <!-- Hours 12 to 23 -->
+                    <span data-hour="12" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">12</span>
+                    </span>
+                    <span data-hour="13" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">13</span>
+                    </span>
+                    <span data-hour="14" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">14</span>
+                    </span>
+                    <span data-hour="15" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">15</span>
+                    </span>
+                    <span data-hour="16" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">16</span>
+                    </span>
+                    <span data-hour="17" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">17</span>
+                    </span>
+                    <span data-hour="18" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">18</span>
+                    </span>
+                    <span data-hour="19" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">19</span>
+                    </span>
+                    <span data-hour="20" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">20</span>
+                    </span>
+                    <span data-hour="21" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">21</span>
+                    </span>
+                    <span data-hour="22" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">22</span>
+                    </span>
+                    <span data-hour="23" class="timeline-hour-dot flex flex-col items-center gap-1 cursor-pointer">
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">23</span>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Indication Caret (Floating overlay positioning managed via JS) -->
+            <div id="timeline-caret" class="absolute z-20 text-cyan-400 pointer-events-none transition-all duration-300" style="left: 0; bottom: -8px; transform: translateX(-50%); opacity: 0;">
+                <i data-lucide="chevron-up" class="w-4 h-4 fill-cyan-400 filter drop-shadow"></i>
+            </div>
+        </div>
+
+        <!-- Collapsible Detailed Prognosis Matrix -->
+        <div class="border-t border-slate-800/40 pt-2 flex flex-col gap-2">
+            <button id="toggle-prognosis-btn" class="w-full flex items-center justify-between text-[10px] font-bold text-slate-400 hover:text-cyan-400 tracking-wider uppercase transition-colors px-1">
+                <span>Detailed Hourly Prognosis Matrix</span>
+                <div class="flex items-center gap-1">
+                    <span id="prognosis-status-txt">Expand</span>
+                    <i data-lucide="chevron-down" id="prognosis-chevron-icon" class="w-3.5 h-3.5 transition-transform duration-300"></i>
+                </div>
+            </button>
+            
+            <!-- Prognosis Table Container (Collapsible) -->
+            <div id="prognosis-collapsible" class="hidden max-h-0 overflow-hidden transition-all duration-500 ease-in-out">
+                <div class="overflow-x-auto w-full scrollbar-thin scrollbar-thumb-slate-800 pb-1 mt-1">
+                    <table class="w-full text-left border-collapse text-[10px] whitespace-nowrap min-w-[700px]">
+                        <thead>
+                            <tr class="border-b border-slate-800/60 text-slate-500 font-bold uppercase tracking-wider text-[8px]">
+                                <th class="py-1.5 px-2 text-slate-400 min-w-[120px]">Metric</th>
+                                <!-- 24 hourly columns dynamically populated -->
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">00</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">01</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">02</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">03</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">04</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">05</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">06</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">07</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">08</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">09</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">10</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">11</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">12</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">13</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">14</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">15</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">16</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">17</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">18</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">19</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">20</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">21</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">22</th>
+                                <th class="p-1 text-center font-bold text-slate-400 min-w-[24px]">23</th>
+                            </tr>
+                        </thead>
+                        <tbody id="prognosis-rows-container">
+                            <!-- Rows for Temperature, Rainfall, Wind, Humidity, and Pressure dynamically populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
     <!-- ================= DASHBOARD LAYOUT WIDGETS (HOME VIEW ONLY) ================= -->
     <div id="dashboard-widgets" class="pointer-events-none">
@@ -572,6 +825,36 @@
                     <input type="range" id="sim-humidity" min="-20" max="20" step="1" value="0">
                 </div>
 
+                <!-- Climate Scenario Presets -->
+                <div class="h-[1px] bg-slate-800/40 my-1.5"></div>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Climate Scenario Presets</p>
+                <div class="grid grid-cols-2 gap-2 mt-1.5">
+                    <button data-scenario="heatwave" class="scenario-btn p-2 bg-orange-500/10 hover:bg-orange-500/20 border border-orange-500/30 hover:border-orange-500/50 rounded-lg text-left text-xs transition duration-150 flex flex-col gap-1">
+                        <span class="font-bold text-orange-400 flex items-center gap-1"><i data-lucide="thermometer-sun" class="w-3.5 h-3.5"></i> Heatwave</span>
+                        <span class="text-[8px] text-slate-400 leading-tight">Extreme heat dome simulation (+4.5°C)</span>
+                    </button>
+                    <button data-scenario="cyclone" class="scenario-btn p-2 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50 rounded-lg text-left text-xs transition duration-150 flex flex-col gap-1">
+                        <span class="font-bold text-red-400 flex items-center gap-1"><i data-lucide="wind" class="w-3.5 h-3.5"></i> Cyclone</span>
+                        <span class="text-[8px] text-slate-400 leading-tight">Coastal storm surge simulation</span>
+                    </button>
+                    <button data-scenario="flood" class="scenario-btn p-2 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-500/50 rounded-lg text-left text-xs transition duration-150 flex flex-col gap-1">
+                        <span class="font-bold text-blue-400 flex items-center gap-1"><i data-lucide="droplets" class="w-3.5 h-3.5"></i> Flash Flood</span>
+                        <span class="text-[8px] text-slate-400 leading-tight">Excess rain and basin overflow (+40% Rain)</span>
+                    </button>
+                    <button data-scenario="drought" class="scenario-btn p-2 bg-amber-600/10 hover:bg-amber-600/20 border border-amber-600/30 hover:border-amber-600/50 rounded-lg text-left text-xs transition duration-150 flex flex-col gap-1">
+                        <span class="font-bold text-amber-500 flex items-center gap-1"><i data-lucide="sun-dim" class="w-3.5 h-3.5"></i> Drought</span>
+                        <span class="text-[8px] text-slate-400 leading-tight">Severe rainfall deficit (-50% Rain)</span>
+                    </button>
+                    <button data-scenario="uhi" class="scenario-btn p-2 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 hover:border-rose-500/50 rounded-lg text-left text-xs transition duration-150 flex flex-col gap-1">
+                        <span class="font-bold text-rose-400 flex items-center gap-1"><i data-lucide="building-2" class="w-3.5 h-3.5"></i> Urban Heat</span>
+                        <span class="text-[8px] text-slate-400 leading-tight">Local LST thermal anomalies</span>
+                    </button>
+                    <button data-scenario="monsoon" class="scenario-btn p-2 bg-teal-500/10 hover:bg-teal-500/20 border border-teal-500/30 hover:border-teal-500/50 rounded-lg text-left text-xs transition duration-150 flex flex-col gap-1">
+                        <span class="font-bold text-teal-400 flex items-center gap-1"><i data-lucide="cloud-rain" class="w-3.5 h-3.5"></i> Monsoon Shift</span>
+                        <span class="text-[8px] text-slate-400 leading-tight">Monsoon delay and moisture drop</span>
+                    </button>
+                </div>
+
                 <div class="h-[1px] bg-slate-800/40 my-1.5"></div>
                 <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Calculated Risk Index Output</p>
 
@@ -841,5 +1124,5 @@
 <script>
     document.body.dataset.activePanel = "{{ active_panel }}";
 </script>
-<script src="{% static 'js/app.js' %}?v=2.0"></script>
+<script src="{% static 'js/app.js' %}?v=3.0"></script>
 {% endblock %}

@@ -2,46 +2,78 @@ import csv
 import io
 import json
 import logging
+import datetime
+import math
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import HttpResponse
-from climate_twin.models import ClimateObservation, ClimatePrediction, ScenarioSimulation, Alert
-from climate_twin.services.ai_service import AISimulationEngine
-import datetime
 from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt # <-- Notice the 's' in views
-import math
+from django.views.decorators.csrf import csrf_exempt
+
+from climate_twin.models import (
+    State, District, ClimateObservation, ClimatePrediction,
+    ClimateSimulation, ClimatePlayback, RiskAssessment, Alert
+)
+from climate_twin.services.core_engines import (
+    ObservationEngine, PredictionEngine, ScenarioEngine,
+    AnalyticsRiskEngine, DigitalTwinEngine, ClimatePlaybackService
+)
+from ml.model_service import ModelService
 
 logger = logging.getLogger('rook.api')
 
+
 class WeatherAPIView(APIView):
+    """
+    GET /api/weather/ or GET /api/current
+    Returns current climate conditions for a district/coordinates.
+    """
     def get(self, request):
-        # 1. Catch the coordinates your frontend is sending
         lat_str = request.GET.get('lat')
         lng_str = request.GET.get('lng')
+        district_name = request.GET.get('district')
 
-        if lat_str and lng_str:
+        # Find nearest district or match by name
+        district = None
+        if district_name:
+            district = District.objects.filter(name__iexact=district_name).first()
+        elif lat_str and lng_str:
             lat = float(lat_str)
             lng = float(lng_str)
-            
-            # 2. Return UNIQUE API data based on the location
-            # (Swap this out for your real IMD/GFS API fetch later)
-            unique_temp = round(28.0 + (math.sin(lat * 10) * 4.5), 1)
-            unique_rain = round(max(0, 10.0 + (math.cos(lng * 10) * 8.0)), 1)
-            unique_wind = int(max(5, 14 + (math.sin(lat + lng) * 8)))
+            # Find closest district
+            districts = District.objects.all()
+            if districts.exists():
+                district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
+
+        if not district:
+            # Fallback to first district or create a default
+            district = District.objects.first()
+
+        if district:
+            # Route to DigitalTwinEngine to get the current state
+            states = DigitalTwinEngine.get_current_state(district=district)
+            if states:
+                obs = states[0]
+            else:
+                # If no observation exists, generate it via ObservationEngine
+                obs = ObservationEngine.update_current_state(datetime.date.today(), district)
             
             return Response({
                 "current": {
-                    "temperature": unique_temp,
-                    "rainfall": unique_rain,
-                    "humidity": int(min(100, 60 + unique_temp * 0.8)),
-                    "wind_speed": unique_wind,
-                    "wind_direction": "SW"
+                    "temperature": obs.temperature,
+                    "rainfall": obs.rainfall,
+                    "humidity": obs.humidity,
+                    "wind_speed": obs.wind,
+                    "wind_direction": obs.wind_direction,
+                    "pressure": obs.pressure,
+                    "lst": obs.lst,
+                    "sst": obs.sst,
+                    "district": district.name
                 }
             })
 
-        # 3. Default fallback if no coordinates are sent
+        # Ultimate safety fallback
         return Response({
             "current": {
                 "temperature": 32.4,
@@ -52,17 +84,25 @@ class WeatherAPIView(APIView):
             }
         })
 
+
 class ForecastAPIView(APIView):
     """
-    Provides 24-hour and 7-day weather trend forecasts.
+    GET /api/forecast/
+    Provides 24-hour hourly trend stubs and 7-day daily forecasts via PredictionEngine.
     """
     def get(self, request):
-        # 24-hour hourly stubs
+        lat_str = request.GET.get('lat')
+        lng_str = request.GET.get('lng')
+        
+        lat = float(lat_str) if lat_str else 15.9129
+        lng = float(lng_str) if lng_str else 79.7400
+
+        # Hourly forecast approximation parabola
         hourly = []
         base_temp = 32.4
         for hour in range(24):
             time_str = f"{(hour + 9) % 24:02d}:00"
-            temp_offset = -4.0 * ((hour - 14) ** 2) / 100.0 + 3.0 # simple temperature parabola
+            temp_offset = -4.0 * ((hour - 14) ** 2) / 100.0 + 3.0
             hourly.append({
                 "time": time_str,
                 "temperature": round(base_temp + temp_offset, 1),
@@ -70,20 +110,25 @@ class ForecastAPIView(APIView):
                 "humidity": round(78 - (temp_offset * 2.5))
             })
 
-        # 7-day stubs (utilizing the AI prediction service)
-        forecast_days = AISimulationEngine.predict_future_trends([], forecast_days=7)
+        # Query 7-day daily predictions via PredictionEngine
+        # Find nearest district for linked reference
+        districts = District.objects.all()
+        district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng)) if districts.exists() else None
+        
+        preds = PredictionEngine.predict_next_week(lat, lng, district)
         weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
         today = datetime.datetime.now()
         
         daily = []
-        for i, day_data in enumerate(forecast_days):
+        for i, pred in enumerate(preds):
             day_date = today + datetime.timedelta(days=i)
             daily.append({
                 "day": weekdays[day_date.weekday()],
                 "date": day_date.strftime("%d %b"),
-                "temperature": day_data["temperature"],
-                "rainfall": day_data["rainfall"],
-                "humidity": round(78 + (i * 0.8) - (day_data["temperature"] - 32.4) * 2)
+                "temperature": pred.temperature,
+                "rainfall": pred.rainfall,
+                "humidity": pred.humidity,
+                "wind_speed": pred.wind
             })
 
         return Response({
@@ -91,89 +136,121 @@ class ForecastAPIView(APIView):
             "daily": daily
         })
 
+
 class DigitalTwinAPIView(APIView):
     """
+    GET /api/digital-twin/
     Handles interpolation of past, present, and predicted climates across variables
-    (Rainfall, Temperature, Humidity, Wind, LST, SST) relative to a timeline index.
+    by coordinating all districts in Andhra Pradesh.
     """
     def get(self, request):
-        timeline_step = request.query_params.get("step", "present") # past, present, future
+        timeline_step = request.query_params.get("step", "present")  # past, present, future
         
-        # Grid overlays stubs representing heatmaps or points for Leaflet visualization
-        # Generates coordinates over Andhra Pradesh (Lat: 13.5 to 19.1, Lng: 76.7 to 84.8)
+        # Grid overlays representing points for Leaflet visualization
         grid_points = []
-        lats = [14.2, 15.0, 15.8, 16.5, 17.3, 18.0]
-        lngs = [77.5, 78.8, 79.9, 81.2, 82.5, 83.8]
+        districts = District.objects.all()
 
-        # Multipliers based on timeline stage to show real simulation divergence
-        multiplier = 1.0
-        if timeline_step == "past":
-            multiplier = 0.92
-        elif timeline_step == "future":
-            multiplier = 1.08
-
-        for idx, lat in enumerate(lats):
-            for jdx, lng in enumerate(lngs):
-                # Apply high-fidelity mathematical variance relative to lat/lng
-                base_temp = 31.0 + (19.0 - lat) * 0.8 + (84.0 - lng) * 0.4
-                base_rain = 8.0 + (lat - 13.0) * 3.2 + (lng - 76.0) * 1.5
-                base_lst = base_temp + 2.5
-                base_sst = base_temp - 3.0 if lng > 80.0 else 0.0 # only coast gets sea surface temp
-
-                grid_points.append({
-                    "id": idx * 10 + jdx,
-                    "lat": round(lat, 2),
-                    "lng": round(lng, 2),
-                    "temperature": round(base_temp * multiplier, 1),
-                    "rainfall": round(base_rain * (2.0 - multiplier), 1),
-                    "humidity": round(min(100, 75 * (2.0 - multiplier)), 1),
-                    "lst": round(base_lst * multiplier, 1),
-                    "sst": round(base_sst * multiplier, 1) if base_sst > 0 else None,
-                    "wind_speed": round(15 + idx * 2.1, 1),
-                    "wind_direction": "SW" if lat > 16.0 else "WNW"
-                })
+        for idx, district in enumerate(districts):
+            # Coordinate twin engines for each district
+            twin = DigitalTwinEngine.generate_digital_twin(district, timeline_step)
+            
+            grid_points.append({
+                "id": district.id,
+                "lat": district.latitude,
+                "lng": district.longitude,
+                "temperature": twin["physical"]["temperature"],
+                "rainfall": twin["physical"]["rainfall"],
+                "humidity": twin["physical"]["humidity"],
+                "lst": twin["physical"]["lst"],
+                "sst": twin["physical"]["sst"] if twin["physical"]["sst"] > 0 else None,
+                "wind_speed": twin["physical"]["wind"],
+                "wind_direction": "SW" if district.latitude > 16.0 else "WNW"
+            })
 
         return Response({
             "timeline_step": timeline_step,
             "observations": grid_points
         })
 
+
 class SimulatorAPIView(APIView):
     """
-    Accepts temperature, rainfall, and humidity perturbations to compute and save climate scenarios.
+    POST /api/simulator/ or POST /api/simulate
+    Accepts temperature, rainfall, and humidity perturbations to compute simulated scenarios.
     """
     def post(self, request):
-        temp_change = float(request.data.get("temp_change", 0.0))
-        rainfall_change = float(request.data.get("rainfall_change", 0.0))
+        temp_change = float(request.data.get("temp_change", request.data.get("temp_delta", 0.0)))
+        rainfall_change = float(request.data.get("rainfall_change", request.data.get("rain_delta", 0.0)))
         humidity_change = float(request.data.get("humidity_change", 0.0))
+        scenario_cat = request.data.get("scenario_category", "Custom")
 
-        # Perform risk calculation
-        results = AISimulationEngine.calculate_simulation_risks(temp_change, rainfall_change, humidity_change)
+        # Select a default state-wide baseline or centroid
+        base_state = {
+            "temperature": 32.4,
+            "rainfall": 12.4,
+            "humidity": 78.0,
+            "wind": 14.0,
+            "pressure": 1008.0,
+            "lst": 34.9,
+            "sst": 28.0,
+            "date": datetime.date.today()
+        }
 
-        # Save to database
-        try:
-            ScenarioSimulation.objects.create(
-                rainfall_change=rainfall_change,
-                temperature_change=temp_change,
-                humidity_change=humidity_change,
-                drought_risk=results["drought_risk"],
-                flood_risk=results["flood_risk"],
-                heatwave_risk=results["heatwave_risk"],
-                agricultural_impact=results["agricultural_impact"],
-                water_stress_index=results["water_stress_index"]
-            )
-        except Exception:
-            # Fallback if DB not fully migrated yet
-            pass
+        # Apply perturbations via ScenarioEngine
+        deltas = {
+            "temp_change": temp_change,
+            "rainfall_change": rainfall_change,
+            "humidity_change": humidity_change
+        }
+        modified = ScenarioEngine.simulate_scenario(base_state, scenario_cat, deltas)
 
-        return Response(results, status=status.HTTP_200_OK)
+        # Run risk assessment via AnalyticsRiskEngine
+        risks = AnalyticsRiskEngine.calculate_risks(modified)
+
+        # Log to database
+        sim_record = ClimateSimulation.objects.create(
+            scenario_category=scenario_cat,
+            temp_change=temp_change,
+            rainfall_change=rainfall_change,
+            humidity_change=humidity_change
+        )
+        # Store RiskAssessment
+        RiskAssessment.objects.create(
+            simulation=sim_record,
+            heatwave_risk=risks["heatwave_risk"],
+            flood_risk=risks["flood_risk"],
+            drought_risk=risks["drought_risk"],
+            cyclone_risk=risks["cyclone_risk"],
+            agriculture_risk=risks["agriculture_risk"],
+            water_stress=risks["water_stress"],
+            crop_stress=risks["crop_stress"],
+            attribution_insights=risks["attribution_insights"]
+        )
+
+        # Build response compatible with app.js
+        agri_map = {'Low': 'Optimal Yield Output', 'Medium': 'Moderate Stress', 'High': 'Critical Yield Loss', 'Critical': 'Severe Crop Wilting / Stress'}
+
+        return Response({
+            "temp_delta": temp_change,
+            "rainfall_pct_change": rainfall_change,
+            "humidity_delta": humidity_change,
+            "drought_risk": risks["drought_risk"],
+            "flood_risk": risks["flood_risk"],
+            "heatwave_risk": risks["heatwave_risk"],
+            "cyclone_risk": risks["cyclone_risk"],
+            "agricultural_impact": agri_map.get(risks["agriculture_risk"], 'Optimal Yield Output'),
+            "water_stress_index": risks["water_stress"],
+            "crop_stress_index": risks["crop_stress"],
+            "attribution_insights": risks["attribution_insights"]
+        }, status=status.HTTP_200_OK)
+
 
 class AlertsAPIView(APIView):
     """
-    Fetches active severe weather alerts (Heatwave, Flood, Cyclone, Rainfall, Drought).
+    GET /api/alerts/
+    Fetches active severe weather alerts.
     """
     def get(self, request):
-        # Fallback pre-populated lists to guarantee operation
         fallback_alerts = [
             {
                 "id": 1,
@@ -188,24 +265,9 @@ class AlertsAPIView(APIView):
                 "severity": "High",
                 "district": "Kurnool & Anantapur",
                 "description": "High temperature anomalies exceeding +4.5C above seasonal averages. Public advisory issued for severe thermal exposure."
-            },
-            {
-                "id": 3,
-                "type": "Flood",
-                "severity": "Medium",
-                "district": "Krishna Basin Lowlands",
-                "description": "Heavy rainfall predictions upstream triggers reservoir alerts. Runoff discharge levels rising."
-            },
-            {
-                "id": 4,
-                "type": "Drought",
-                "severity": "Low",
-                "district": "Rayalaseema Region",
-                "description": "Prolonged dry spell observations indicate low soil moisture availability across rural farmlands."
             }
         ]
         
-        # Try database first
         try:
             alerts = Alert.objects.filter(active=True)
             if alerts.exists():
@@ -225,15 +287,16 @@ class AlertsAPIView(APIView):
 
         return Response(fallback_alerts)
 
+
 class ReportsAPIView(APIView):
     """
-    Generates and processes exportable monthly and seasonal reports in CSV or JSON.
+    GET /api/reports/
+    Generates monthly or hazard reports.
     """
     def get(self, request):
         export_format = request.query_params.get("format", "json")
-        report_type = request.query_params.get("type", "monsoon") # monsoon, heatwave, drought, monthly
+        report_type = request.query_params.get("type", "monsoon")
 
-        # Report structures
         report_meta = {
             "title": f"R.O.O.K Climate Assessment: {report_type.upper()}",
             "generated_at": datetime.datetime.now().strftime("%Y-%m-%d"),
@@ -248,7 +311,6 @@ class ReportsAPIView(APIView):
         }
 
         if export_format == "csv":
-            # Generate CSV response inline
             output = io.StringIO()
             writer = csv.writer(output)
             writer.writerow(["Report Title", report_meta["title"]])
@@ -267,54 +329,54 @@ class ReportsAPIView(APIView):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# XGBoost Model-Powered Prediction Endpoints
+# Refactored XGBoost Model-Powered Prediction & Simulation View Targets
 # ─────────────────────────────────────────────────────────────────────────────
 
 @method_decorator(csrf_exempt, name='dispatch')
 class PredictView(APIView):
     """
-    POST /api/predict/
-    Body: { "lat": float, "lng": float, "date": "ISO date str" (optional) }
-
-    Returns XGBoost model prediction (or IDW fallback) for the given coordinates.
-    Response:
-    {
-      "lat", "lng",
-      "rainfall_mm":  float,
-      "tmax_c":       float,
-      "tmin_c":       float,
-      "risk":         { "drought", "flood", "heatwave", "agri" },
-      "source":       "xgboost" | "idw_fallback"
-    }
+    POST /api/predict/ or GET /api/predict
+    Returns prediction outputs via PredictionEngine and AnalyticsRiskEngine.
     """
+    def get(self, request):
+        lat = float(request.GET.get('lat', 15.9129))
+        lng = float(request.GET.get('lng', 79.7400))
+        date_str = request.GET.get('date', datetime.date.today().isoformat())
+        
+        try:
+            target_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            target_date = datetime.date.today()
+            
+        return self._handle_predict(lat, lng, target_date)
 
     def post(self, request):
-        print("🚨🚨🚨 HELLO FROM THE NEW CODE!!! 🚨🚨🚨") # <--- ADD THIS
         try:
             body = json.loads(request.body)
         except (json.JSONDecodeError, AttributeError):
             body = request.data
 
-        lat  = float(body.get('lat', 15.9129))
-        lng  = float(body.get('lng', 79.7400))
-        date_str = body.get('date', datetime.datetime.utcnow().isoformat())
+        lat = float(body.get('lat', 15.9129))
+        lng = float(body.get('lng', 79.7400))
+        date_str = body.get('date', datetime.datetime.utcnow().isoformat()[:10])
+        
+        try:
+            target_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+        except Exception:
+            target_date = datetime.date.today()
 
-        rain = 8.0
-        temp = {'tmax_c': 32.4, 'tmin_c': 24.5}
-        wind = 14.0  # <--- Safe default wind
-        risk = {'drought': 'Low', 'flood': 'Low', 'heatwave': 'Low', 'agri': 'Low'}
-        source = 'idw_fallback'
+        return self._handle_predict(lat, lng, target_date, body)
 
-        # Build feature vector from request context
+    def _handle_predict(self, lat: float, lng: float, target_date: datetime.date, body: Optional[dict] = None) -> Response:
+        # Build features payload
         try:
             from ml.feature_builder import build_features_from_request
-            features = build_features_from_request(lat, lng, body)
-        except Exception as e:
-            logger.warning(f'[PredictView] feature_builder error: {e}. Using defaults.')
+            features = build_features_from_request(lat, lng, body or {})
+        except Exception:
             features = {
                 'lat': lat, 'lng': lng,
-                'month': datetime.datetime.utcnow().month,
-                'day_of_year': datetime.datetime.utcnow().timetuple().tm_yday,
+                'month': target_date.month,
+                'day_of_year': target_date.timetuple().tm_yday,
                 'elevation_m': 150.0,
                 'humidity': 72.0, 'pressure_hpa': 1008.0, 'wind_kt': 14.0,
                 'rain_lag1': 5.0, 'rain_lag2': 3.0, 'rain_lag3': 2.0,
@@ -322,192 +384,624 @@ class PredictView(APIView):
                 'tmax_lag2': 33.0, 'tmin_lag2': 24.0,
             }
 
-        # Try XGBoost model → fallback to IDW
-        try:
-            from ml.model_service import ModelService
-            service = ModelService.get_instance()
+        # Predict variables using engine
+        pred_data = PredictionEngine._get_forecast_point(lat, lng, target_date, "1-day", features)
 
-            if service.is_ready:
-                rain = service.predict_rainfall(features)
-                temp = service.predict_temperature(features)
-                wind = service.predict_windspeed(features)
-                risk = ModelService._compute_risk(rain, temp, features)
-                source = 'xgboost'
-            else:
-                raise ValueError('Model not loaded')
-
-        except Exception as e:
-            logger.info(f'[PredictView] Falling back to IDW: {e}')
-            try:
-                from ml.fallback_idw import IDWFallback
-                rain, temp, risk = IDWFallback.predict(lat, lng)
-            except Exception as idw_err:
-                logger.error(f'[PredictView] IDW fallback also failed: {idw_err}')
-                rain = 8.0
-                temp = {'tmax_c': 32.4, 'tmin_c': 24.5}
-                wind = service.predict_windspeed(features)
-                risk = {'drought': 'Low', 'flood': 'Low', 'heatwave': 'Low', 'agri': 'Low'}
-            source = 'idw_fallback'
+        # Run risk assessment
+        risks = AnalyticsRiskEngine.calculate_risks({
+            "temperature": pred_data["temperature"],
+            "rainfall": pred_data["rainfall"],
+            "humidity": pred_data["humidity"],
+            "pressure": pred_data["pressure"],
+            "wind": pred_data["wind"],
+            "lst": pred_data["lst"],
+            "sst": pred_data["sst"],
+            "temp_change": 0.0,
+            "rainfall_change": 0.0,
+            "humidity_change": 0.0
+        })
 
         return Response({
-            'lat':          lat,
-            'lng':          lng,
-            'rainfall_mm':  round(float(rain or 0), 2),
-            'tmax_c':       round(float((temp or {}).get('tmax_c', 32.4)), 1),
-            'tmin_c':       round(float((temp or {}).get('tmin_c', 24.5)), 1),
-            'wind_speed':   round(float(wind or 14.0), 1),
-            'risk':         risk,
-            'source':       source,
-            'timestamp':    datetime.datetime.utcnow().isoformat(),
+            'lat': lat,
+            'lng': lng,
+            'rainfall_mm': pred_data["rainfall"],
+            'tmax_c': pred_data["temperature"],
+            'tmin_c': round(pred_data["temperature"] - 5.5, 1),
+            'wind_speed': pred_data["wind"],
+            'risk': {
+                'drought': risks["drought_risk"],
+                'flood': risks["flood_risk"],
+                'heatwave': risks["heatwave_risk"],
+                'agri': risks["agriculture_risk"]
+            },
+            'attribution_insights': risks["attribution_insights"],
+            'source': 'xgboost' if ModelService.get_instance().is_ready else 'idw_fallback',
+            'timestamp': datetime.datetime.utcnow().isoformat()
         })
 
 
 class SimulateView(APIView):
     """
-    POST /api/predict-simulate/
-    Body: {
-      "lat": float, "lng": float,
-      "temp_delta": float   (°C shift, e.g. +2.5 or -1.0),
-      "rain_delta": float   (% change, e.g. +30 or -50)
-    }
-
-    Applies What-If deltas and returns re-simulated predictions + risk.
+    POST /api/predict-simulate/ or POST /api/simulate
     """
-
     def post(self, request):
         try:
             body = json.loads(request.body)
         except (json.JSONDecodeError, AttributeError):
             body = request.data
 
-        lat         = float(body.get('lat', 15.9129))
-        lng         = float(body.get('lng', 79.7400))
-        temp_delta  = float(body.get('temp_delta', body.get('temp_change', 0.0)))
-        rain_delta  = float(body.get('rain_delta', body.get('rainfall_change', 0.0)))
-        hum_delta   = float(body.get('humidity_change', 0.0))
+        lat = float(body.get('lat', 15.9129))
+        lng = float(body.get('lng', 79.7400))
+        temp_delta = float(body.get('temp_delta', body.get('temp_change', 0.0)))
+        rain_delta = float(body.get('rain_delta', body.get('rainfall_change', 0.0)))
+        hum_delta = float(body.get('humidity_change', 0.0))
+        scenario_cat = body.get('scenario_category', 'Custom')
 
-        # Build base feature vector
-        try:
-            from ml.feature_builder import build_features_from_request
-            base_features = build_features_from_request(lat, lng, body)
-        except Exception:
-            base_features = {
-                'lat': lat, 'lng': lng,
-                'month': datetime.datetime.utcnow().month,
-                'day_of_year': datetime.datetime.utcnow().timetuple().tm_yday,
-                'elevation_m': 150.0,
-                'humidity': max(0, min(100, 72.0 + hum_delta)),
-                'pressure_hpa': 1008.0, 'wind_kt': 14.0,
-                'rain_lag1': 5.0, 'rain_lag2': 3.0, 'rain_lag3': 2.0,
-                'tmax_lag1': 33.0, 'tmin_lag1': 24.0,
-                'tmax_lag2': 33.0, 'tmin_lag2': 24.0,
-            }
+        # Load prediction base
+        base_pred = PredictionEngine._get_forecast_point(lat, lng, datetime.date.today(), "1-day")
 
-        if hum_delta:
-            base_features['humidity'] = max(0, min(100, base_features.get('humidity', 72) + hum_delta))
+        # Run scenario engine modifications
+        deltas = {
+            "temp_change": temp_delta,
+            "rainfall_change": rain_delta,
+            "humidity_change": hum_delta
+        }
+        modified = ScenarioEngine.simulate_scenario({
+            "temperature": base_pred["temperature"],
+            "rainfall": base_pred["rainfall"],
+            "humidity": base_pred["humidity"],
+            "wind": base_pred["wind"],
+            "pressure": base_pred["pressure"],
+            "lst": base_pred["lst"],
+            "sst": base_pred["sst"]
+        }, scenario_cat, deltas)
 
-        deltas = {'temp_delta': temp_delta, 'rain_delta': rain_delta}
+        # Run risk assessment
+        risks = AnalyticsRiskEngine.calculate_risks(modified)
 
-        try:
-            from ml.model_service import ModelService
-            service = ModelService.get_instance()
-            result = service.predict_simulation(base_features, deltas)
+        # Save Custom Simulation run
+        sim_record = ClimateSimulation.objects.create(
+            scenario_category=scenario_cat,
+            temp_change=temp_delta,
+            rainfall_change=rain_delta,
+            humidity_change=hum_delta
+        )
+        RiskAssessment.objects.create(
+            simulation=sim_record,
+            heatwave_risk=risks["heatwave_risk"],
+            flood_risk=risks["flood_risk"],
+            drought_risk=risks["drought_risk"],
+            cyclone_risk=risks["cyclone_risk"],
+            agriculture_risk=risks["agriculture_risk"],
+            water_stress=risks["water_stress"],
+            crop_stress=risks["crop_stress"],
+            attribution_insights=risks["attribution_insights"]
+        )
 
-        except Exception as e:
-            logger.error(f'[SimulateView] Simulation error: {e}')
-            # Legacy fallback to AISimulationEngine
-            result_legacy = AISimulationEngine.calculate_simulation_risks(temp_delta, rain_delta, hum_delta)
-            result = {
-                'rainfall_mm':  float(result_legacy.get('water_stress_index', 8.0)),
-                'tmax_c':       32.4 + temp_delta,
-                'tmin_c':       24.5 + temp_delta,
-                'risk': {
-                    'drought':  result_legacy.get('drought_risk', 'Low'),
-                    'flood':    result_legacy.get('flood_risk', 'Low'),
-                    'heatwave': result_legacy.get('heatwave_risk', 'Low'),
-                    'agri':     result_legacy.get('agricultural_impact', 'Low'),
-                },
-                'source': 'legacy_engine',
-            }
-
-        # Also compute the legacy format fields for backward compatibility with app.js
-        risk = result.get('risk', {})
-        water_stress = min(100, max(0, 40.0 + (temp_delta * 3) + (rain_delta * 0.5) + (hum_delta * 0.3)))
-        agri_map = {'Low': 'Optimal Yield Output', 'Medium': 'Moderate Stress', 'High': 'Critical Yield Loss'}
+        agri_map = {'Low': 'Optimal Yield Output', 'Medium': 'Moderate Stress', 'High': 'Critical Yield Loss', 'Critical': 'Severe Crop Wilting / Stress'}
 
         return Response({
-            # New format
-            'rainfall_mm':        round(float(result.get('rainfall_mm', 8.0)), 2),
-            'tmax_c':             round(float(result.get('tmax_c', 32.4)), 1),
-            'tmin_c':             round(float(result.get('tmin_c', 24.5)), 1),
-            'risk':               risk,
-            'source':             result.get('source', 'unknown'),
-            # Legacy format kept for backward compat with app.js SimulatorAPIView consumer
-            'drought_risk':       risk.get('drought', 'Low'),
-            'flood_risk':         risk.get('flood', 'Low'),
-            'heatwave_risk':      risk.get('heatwave', 'Low'),
-            'agricultural_impact': agri_map.get(risk.get('agri', 'Low'), 'Optimal Yield Output'),
-            'water_stress_index': round(water_stress, 1),
-            'timestamp':          datetime.datetime.utcnow().isoformat(),
+            'rainfall_mm': modified["rainfall"],
+            'tmax_c': modified["temperature"],
+            'tmin_c': round(modified["temperature"] - 5.5, 1),
+            'risk': {
+                'drought': risks["drought_risk"],
+                'flood': risks["flood_risk"],
+                'heatwave': risks["heatwave_risk"],
+                'agri': risks["agriculture_risk"]
+            },
+            'source': 'xgboost_simulation' if ModelService.get_instance().is_ready else 'idw_simulation',
+            # Legacy format compat keys
+            'drought_risk': risks["drought_risk"],
+            'flood_risk': risks["flood_risk"],
+            'heatwave_risk': risks["heatwave_risk"],
+            'agricultural_impact': agri_map.get(risks["agriculture_risk"], 'Optimal Yield Output'),
+            'water_stress_index': risks["water_stress"],
+            'crop_stress_index': risks["crop_stress"],
+            'attribution_insights': risks["attribution_insights"],
+            'timestamp': datetime.datetime.utcnow().isoformat()
         })
 
 
 class RiskView(APIView):
     """
     GET /api/risk/
-    Returns per-district risk indices for the current timestep.
+    Returns risk and explainability details for AP districts.
     """
-
-    # AP district climate data (matches DISTRICT_STATIONS in app.js)
-    DISTRICT_DATA = [
-        {'name': 'Anantapur',       'lat': 14.6819, 'lng': 77.6006, 'temp': 34.2, 'rain': 2.1,  'humidity': 55},
-        {'name': 'Chittoor',        'lat': 13.2172, 'lng': 79.1003, 'temp': 32.0, 'rain': 4.5,  'humidity': 68},
-        {'name': 'East Godavari',   'lat': 17.2305, 'lng': 81.8282, 'temp': 31.8, 'rain': 22.4, 'humidity': 88},
-        {'name': 'Guntur',          'lat': 16.3067, 'lng': 80.4365, 'temp': 33.5, 'rain': 11.2, 'humidity': 75},
-        {'name': 'Krishna',         'lat': 16.1667, 'lng': 81.1333, 'temp': 32.9, 'rain': 14.8, 'humidity': 82},
-        {'name': 'Kurnool',         'lat': 15.8281, 'lng': 78.0373, 'temp': 35.1, 'rain': 1.0,  'humidity': 52},
-        {'name': 'Prakasam',        'lat': 15.5057, 'lng': 79.6450, 'temp': 33.8, 'rain': 3.2,  'humidity': 64},
-        {'name': 'Srikakulam',      'lat': 18.2949, 'lng': 83.8938, 'temp': 30.5, 'rain': 28.6, 'humidity': 92},
-        {'name': 'Nellore',         'lat': 14.4426, 'lng': 79.9865, 'temp': 33.0, 'rain': 5.1,  'humidity': 70},
-        {'name': 'Visakhapatnam',   'lat': 17.6868, 'lng': 83.2185, 'temp': 31.2, 'rain': 18.5, 'humidity': 85},
-        {'name': 'Vizianagaram',    'lat': 18.1124, 'lng': 83.3989, 'temp': 30.9, 'rain': 21.0, 'humidity': 89},
-        {'name': 'West Godavari',   'lat': 16.8105, 'lng': 81.4288, 'temp': 32.1, 'rain': 19.3, 'humidity': 86},
-        {'name': 'YSR Kadapa',      'lat': 14.4673, 'lng': 78.8242, 'temp': 34.6, 'rain': 1.8,  'humidity': 58},
-    ]
-
     def get(self, request):
-        from ml.model_service import ModelService
         results = []
-        for d in self.DISTRICT_DATA:
-            temp = {'tmax_c': d['temp'], 'tmin_c': d['temp'] - 5.5}
-            try:
-                risk = ModelService._compute_risk(d['rain'], temp, d)
-            except Exception:
-                risk = {'drought': 'Low', 'flood': 'Low', 'heatwave': 'Low', 'agri': 'Low'}
+        districts = District.objects.all()
+
+        for d in districts:
+            # Query DigitalTwin state for district
+            twin = DigitalTwinEngine.generate_digital_twin(d, "present")
+            risks = twin["risks"]
+            
             results.append({
-                'district':  d['name'],
-                'lat':       d['lat'],
-                'lng':       d['lng'],
-                'temp':      d['temp'],
-                'rain':      d['rain'],
-                'humidity':  d['humidity'],
-                'drought':   risk.get('drought', 'Low'),
-                'flood':     risk.get('flood', 'Low'),
-                'heatwave':  risk.get('heatwave', 'Low'),
+                'district': d.name,
+                'lat': d.latitude,
+                'lng': d.longitude,
+                'temp': twin["physical"]["temperature"],
+                'rain': twin["physical"]["rainfall"],
+                'humidity': twin["physical"]["humidity"],
+                'drought': risks["drought_risk"],
+                'flood': risks["flood_risk"],
+                'heatwave': risks["heatwave_risk"],
+                'cyclone': risks["cyclone_risk"],
+                'agri_risk': risks["agriculture_risk"],
+                'water_stress': risks["water_stress"],
+                'crop_stress': risks["crop_stress"],
+                'attribution_insights': risks["attribution_insights"]
             })
         return Response(results)
+
+
+class HistoryAPIView(APIView):
+    """
+    GET /api/history
+    Returns past observation records logged in the database.
+    """
+    def get(self, request):
+        district_name = request.GET.get("district")
+        limit = int(request.GET.get("limit", 100))
+
+        qs = ClimateObservation.objects.all()
+        if district_name:
+            qs = qs.filter(district__name__iexact=district_name)
+        
+        records = qs.order_by('-date')[:limit]
+
+        return Response([
+            {
+                "date": o.date.isoformat(),
+                "district": o.district.name if o.district else "AP Centroid",
+                "latitude": o.latitude,
+                "longitude": o.longitude,
+                "temperature": o.temperature,
+                "rainfall": o.rainfall,
+                "humidity": o.humidity,
+                "pressure": o.pressure,
+                "wind": o.wind,
+                "lst": o.lst,
+                "sst": o.sst
+            }
+            for o in records
+        ])
+
+
+class PlaybackAPIView(APIView):
+    """
+    GET /api/playback
+    Provides ClimateState representing the physical variables, alerts, risk indicators,
+    and cyclone coordinates for the requested datetime and mode.
+    """
+    def get(self, request):
+        datetime_str = request.GET.get("datetime")
+        
+        # If datetime_str is not provided, fall back to legacy month/year/date queries
+        if not datetime_str:
+            month = request.GET.get("month")
+            year = request.GET.get("year")
+            date_str = request.GET.get("date")
+
+            if date_str:
+                try:
+                    d = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                    frames = ClimatePlaybackService.play_day(d)
+                    return Response({"type": "day", "date": date_str, "frames": frames})
+                except Exception as e:
+                    return Response({"error": f"Invalid date: {e}"}, status=400)
+
+            if month:
+                y = int(year) if year else datetime.date.today().year
+                m = int(month)
+                frames = ClimatePlaybackService.play_month(y, m)
+                return Response({"type": "month", "year": y, "month": m, "frames": frames})
+
+            # Default: list recent playback logs
+            playback_logs = ClimatePlayback.objects.all().order_by('-timestamp')[:50]
+            return Response([
+                {
+                    "id": p.id,
+                    "timestamp": p.timestamp.isoformat(),
+                    "start": p.date_range_start.isoformat(),
+                    "end": p.date_range_end.isoformat(),
+                    "speed": p.speed,
+                    "status": p.status
+                }
+                for p in playback_logs
+            ])
+            
+        # Parse datetime parameter
+        try:
+            dt_str = datetime_str.replace('T', ' ')
+            if len(dt_str) > 10:
+                dt = datetime.datetime.strptime(dt_str[:16], "%Y-%m-%d %H:%M")
+            else:
+                dt = datetime.datetime.strptime(dt_str, "%Y-%m-%d")
+        except Exception as e:
+            return Response({"error": f"Invalid datetime format: {e}"}, status=400)
+            
+        target_date = dt.date()
+        hour = dt.hour
+        mode = request.GET.get("mode", "live").lower()
+        
+        # Retrieve optional simulator parameters
+        temp_delta = float(request.GET.get("temp_delta", 0.0))
+        rain_delta = float(request.GET.get("rain_delta", 0.0))
+        humidity_change = float(request.GET.get("humidity_change", 0.0))
+        scenario_category = request.GET.get("scenario_category", "Custom")
+
+        # Map mode inputs and fetch baseline
+        districts = District.objects.all()
+        grid_points = []
+        
+        # Find nearest district for target location if provided
+        lat_str = request.GET.get('lat')
+        lng_str = request.GET.get('lng')
+        target_district = None
+        if lat_str and lng_str:
+            lat = float(lat_str)
+            lng = float(lng_str)
+            if districts.exists():
+                target_district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
+        if not target_district:
+            target_district = districts.first()
+
+        # Adjust target date based on availability or mode
+        if mode == 'live':
+            latest_obs = ClimateObservation.objects.all().order_by('-date').first()
+            if latest_obs:
+                target_date = latest_obs.date
+        elif mode == 'history':
+            # restrict to observations range
+            obs_exists = ClimateObservation.objects.filter(date=target_date).exists()
+            if not obs_exists:
+                closest = ClimateObservation.objects.all().order_by(models.functions.Abs(models.F('date') - target_date)).first()
+                if closest:
+                    target_date = closest.date
+        elif mode == 'forecast':
+            # restrict to prediction range
+            pred_exists = ClimatePrediction.objects.filter(date=target_date).exists()
+            if not pred_exists:
+                closest = ClimatePrediction.objects.all().order_by(models.functions.Abs(models.F('date') - target_date)).first()
+                if closest:
+                    target_date = closest.date
+
+        # Diurnal Cycle Curve offsets
+        temp_offset = -4.0 * ((hour - 14) ** 2) / 100.0 + 3.0
+        humidity_offset = - (temp_offset * 2.5)
+        wind_offset = 3.0 * math.sin((hour - 8) * math.pi / 12) if 8 <= hour <= 20 else -2.0
+        pressure_offset = 1.2 * math.cos(hour * math.pi / 6)
+        
+        # Build states for each district
+        for district in districts:
+            base_temp = 32.4
+            base_rain = 5.0
+            base_hum = 75.0
+            base_press = 1008.0
+            base_wind = 14.0
+            base_lst = 34.0
+            base_sst = 0.0
+            wind_dir = "SW"
+
+            # Fetch DB values depending on mode
+            if mode in ['history', 'live'] or (mode == 'scenario' and ClimateObservation.objects.filter(date=target_date, district=district).exists()):
+                records = ClimateObservation.objects.filter(date=target_date, district=district)
+                if records.exists():
+                    obs = records.first()
+                    base_temp = obs.temperature
+                    base_rain = obs.rainfall
+                    base_hum = obs.humidity
+                    base_press = obs.pressure
+                    base_wind = obs.wind
+                    base_lst = obs.lst
+                    base_sst = obs.sst
+                    wind_dir = obs.wind_direction
+            else: # forecast or scenario with predictions
+                records = ClimatePrediction.objects.filter(date=target_date, district=district)
+                if records.exists():
+                    pred = records.first()
+                    base_temp = pred.temperature
+                    base_rain = pred.rainfall
+                    base_hum = pred.humidity
+                    base_press = pred.pressure
+                    base_wind = pred.wind
+                    base_lst = pred.lst
+                    base_sst = pred.sst
+                    wind_dir = "SW" if district.latitude > 16.0 else "WNW"
+            
+            # Apply hourly diurnal curve offsets
+            hourly_temp = base_temp + temp_offset
+            
+            # Convective rainfall peaks in afternoon
+            if 14 <= hour <= 21:
+                rain_factor = 2.0 * math.sin((hour - 14) * math.pi / 7)
+            else:
+                rain_factor = 0.05
+            hourly_rain = base_rain * rain_factor
+
+            hourly_hum = min(100.0, max(10.0, base_hum + humidity_offset))
+            hourly_wind = max(1.0, base_wind + wind_offset)
+            hourly_press = base_press + pressure_offset
+            hourly_lst = base_lst + temp_offset * 1.3
+            hourly_sst = base_sst + 0.15 * math.sin((hour - 12) * math.pi / 12) if district.longitude > 80.5 else 0.0
+
+            # If scenario mode, apply perturbations
+            if mode == 'scenario':
+                hourly_temp += temp_delta
+                # rain_delta is percentage change (e.g. +20%)
+                hourly_rain = hourly_rain * (1.0 + rain_delta / 100.0)
+                hourly_hum = min(100.0, max(0.0, hourly_hum + humidity_change))
+                
+                # Apply Scenario multipliers for risk computations
+                if scenario_category == 'cyclone':
+                    hourly_temp += 1.0
+                    hourly_rain += 15.0
+                    hourly_hum = min(100.0, hourly_hum + 15.0)
+                    hourly_wind += 25.0
+                    hourly_press -= 20.0
+                elif scenario_category == 'heatwave':
+                    hourly_temp += 4.5
+                    hourly_rain = max(0.0, hourly_rain - 3.0)
+                    hourly_hum = max(0.0, hourly_hum - 10.0)
+                elif scenario_category == 'flood':
+                    hourly_rain += 25.0
+                    hourly_hum = min(100.0, hourly_hum + 10.0)
+                elif scenario_category == 'drought':
+                    hourly_temp += 3.0
+                    hourly_rain = 0.0
+                    hourly_hum = max(0.0, hourly_hum - 15.0)
+            
+            # Clean bounds
+            hourly_rain = round(max(0.0, hourly_rain), 1)
+            hourly_temp = round(hourly_temp, 1)
+            hourly_hum = round(hourly_hum, 1)
+            hourly_wind = round(hourly_wind, 1)
+            hourly_press = round(hourly_press, 1)
+            hourly_lst = round(hourly_lst, 1)
+            hourly_sst = round(hourly_sst, 1)
+
+            # Compute risks dynamically
+            risks = AnalyticsRiskEngine.calculate_risks({
+                "temperature": hourly_temp,
+                "rainfall": hourly_rain,
+                "humidity": hourly_hum,
+                "pressure": hourly_press,
+                "wind": hourly_wind,
+                "lst": hourly_lst,
+                "sst": hourly_sst,
+                "temp_change": temp_delta if mode == 'scenario' else 0.0,
+                "rainfall_change": rain_delta if mode == 'scenario' else 0.0,
+                "humidity_change": humidity_change if mode == 'scenario' else 0.0
+            })
+
+            grid_points.append({
+                "id": district.id,
+                "district": district.name,
+                "latitude": district.latitude,
+                "longitude": district.longitude,
+                "temperature": hourly_temp,
+                "rainfall": hourly_rain,
+                "humidity": hourly_hum,
+                "pressure": hourly_press,
+                "wind_speed": hourly_wind,
+                "wind_direction": wind_dir,
+                "lst": hourly_lst,
+                "sst": hourly_sst,
+                "drought_risk": risks["drought_risk"],
+                "flood_risk": risks["flood_risk"],
+                "heatwave_risk": risks["heatwave_risk"],
+                "cyclone_risk": risks["cyclone_risk"],
+                "agriculture_risk": risks["agriculture_risk"],
+                "water_stress": risks["water_stress"],
+                "crop_stress": risks["crop_stress"],
+                "attribution_insights": risks["attribution_insights"]
+            })
+
+        # Calculate average/KPI values
+        avg_temp = round(sum(d["temperature"] for d in grid_points) / len(grid_points), 1)
+        avg_rain = round(sum(d["rainfall"] for d in grid_points) / len(grid_points), 1)
+        avg_hum = round(sum(d["humidity"] for d in grid_points) / len(grid_points), 1)
+        avg_wind = round(sum(d["wind_speed"] for d in grid_points) / len(grid_points), 1)
+        avg_press = round(sum(d["pressure"] for d in grid_points) / len(grid_points), 1)
+        avg_lst = round(sum(d["lst"] for d in grid_points) / len(grid_points), 1)
+        avg_sst_list = [d["sst"] for d in grid_points if d["sst"] > 0]
+        avg_sst = round(sum(avg_sst_list) / len(avg_sst_list), 1) if avg_sst_list else 0.0
+
+        # Get active alerts
+        active_alerts = []
+        alerts_qs = Alert.objects.filter(active=True)
+        for alert in alerts_qs:
+            active_alerts.append({
+                "id": alert.id,
+                "type": alert.type,
+                "severity": alert.severity,
+                "district": alert.district,
+                "description": alert.description
+            })
+            
+        # Add fallback alert if none exist and it is cyclone scenario
+        if not active_alerts and (scenario_category == 'cyclone' and mode == 'scenario'):
+            active_alerts.append({
+                "id": 99,
+                "type": "Cyclone",
+                "severity": "Critical",
+                "district": "Visakhapatnam & East Godavari Coast",
+                "description": "Severe Cyclonic Storm warning. Dynamic winds exceeding 65 knots."
+            })
+
+        # Cyclone parameters
+        cyclone_active = (scenario_category == 'cyclone' and mode == 'scenario') or any(a["type"] == "Cyclone" and a["severity"] in ["High", "Critical"] for a in active_alerts)
+        cyclone_data = {"active": False}
+        if cyclone_active:
+            track_points = [
+                {"lat": 14.0, "lng": 83.5}, 
+                {"lat": 15.2, "lng": 82.8},
+                {"lat": 16.4, "lng": 82.1},
+                {"lat": 17.68, "lng": 83.21}
+            ]
+            # Interpolate cyclone center coordinates based on hour
+            if hour < 6:
+                t = hour / 6.0
+                p0, p1 = track_points[0], track_points[1]
+            elif hour < 12:
+                t = (hour - 6) / 6.0
+                p0, p1 = track_points[1], track_points[2]
+            elif hour < 18:
+                t = (hour - 12) / 6.0
+                p0, p1 = track_points[2], track_points[3]
+            else:
+                t = 1.0
+                p0, p1 = track_points[3], track_points[3]
+            
+            c_lat = round(p0["lat"] + t * (p1["lat"] - p0["lat"]), 2)
+            c_lng = round(p0["lng"] + t * (p1["lng"] - p0["lng"]), 2)
+
+            cyclone_data = {
+                "active": True,
+                "eye": [c_lat, c_lng],
+                "size_km": 180 - (hour * 2) if hour < 18 else 100,  # size decreases/stabilizes as it makes landfall
+                "wind_speed_kt": 75 - (hour - 12) * 2.5 if hour > 12 else 55 + hour * 1.5,
+                "forecast_cone": [[14.0, 81.5], [14.0, 85.5], [17.68, 83.21]],
+                "pressure_rings": [1002, 992, 982] if hour < 18 else [1006, 998, 990],
+                "landfall_coords": [17.68, 83.21]
+            }
+
+        # Charts data: 24 hourly values for target district
+        target_district_obj = target_district or District.objects.first()
+        charts_temp = []
+        charts_rain = []
+        charts_wind = []
+        charts_wind_dir = []
+        charts_hum = []
+        charts_press = []
+        charts_lst = []
+        charts_sst = []
+        charts_time = []
+        
+        # Calculate daily baseline for this target district
+        td_temp = 32.4
+        td_rain = 5.0
+        td_hum = 75.0
+        td_wind = 14.0
+        td_press = 1008.0
+        td_lst = 34.0
+        td_sst = 0.0
+        td_wind_dir = "SW"
+
+        if mode in ['history', 'live'] or (mode == 'scenario' and ClimateObservation.objects.filter(date=target_date, district=target_district_obj).exists()):
+            td_obs = ClimateObservation.objects.filter(date=target_date, district=target_district_obj).first()
+            if td_obs:
+                td_temp = td_obs.temperature
+                td_rain = td_obs.rainfall
+                td_hum = td_obs.humidity
+                td_wind = td_obs.wind
+                td_press = td_obs.pressure
+                td_lst = td_obs.lst
+                td_sst = td_obs.sst
+                td_wind_dir = td_obs.wind_direction
+        else:
+            td_pred = ClimatePrediction.objects.filter(date=target_date, district=target_district_obj).first()
+            if td_pred:
+                td_temp = td_pred.temperature
+                td_rain = td_pred.rainfall
+                td_hum = td_pred.humidity
+                td_wind = td_pred.wind
+                td_press = td_pred.pressure
+                td_lst = td_pred.lst
+                td_sst = td_pred.sst
+                td_wind_dir = "SW" if target_district_obj.latitude > 16.0 else "WNW"
+                
+        for h in range(24):
+            h_temp_offset = -4.0 * ((h - 14) ** 2) / 100.0 + 3.0
+            h_humidity_offset = - (h_temp_offset * 2.5)
+            h_wind_offset = 3.0 * math.sin((h - 8) * math.pi / 12) if 8 <= h <= 20 else -2.0
+            h_pressure_offset = 1.2 * math.cos(h * math.pi / 6)
+
+            if 14 <= h <= 21:
+                h_rain_factor = 2.0 * math.sin((h - 14) * math.pi / 7)
+            else:
+                h_rain_factor = 0.05
+            
+            h_temp = td_temp + h_temp_offset
+            h_rain = td_rain * h_rain_factor
+            h_hum = min(100.0, max(10.0, td_hum + h_humidity_offset))
+            h_wind = max(1.0, td_wind + h_wind_offset)
+            h_press = td_press + h_pressure_offset
+            h_lst = td_lst + h_temp_offset * 1.3
+            h_sst = td_sst + 0.15 * math.sin((h - 12) * math.pi / 12) if target_district_obj.longitude > 80.5 else 0.0
+            
+            if mode == 'scenario':
+                h_temp += temp_delta
+                h_rain = h_rain * (1.0 + rain_delta / 100.0)
+                h_hum = min(100.0, max(0.0, h_hum + humidity_change))
+                if scenario_category == 'cyclone':
+                    h_temp += 1.0
+                    h_rain += 15.0
+                    h_hum = min(100.0, h_hum + 15.0)
+                    h_wind += 25.0
+                    h_press -= 20.0
+                elif scenario_category == 'heatwave':
+                    h_temp += 4.5
+                    h_rain = max(0.0, h_rain - 3.0)
+                    h_hum = max(0.0, h_hum - 10.0)
+                elif scenario_category == 'flood':
+                    h_rain += 25.0
+                    h_hum = min(100.0, h_hum + 10.0)
+                elif scenario_category == 'drought':
+                    h_temp += 3.0
+                    h_rain = 0.0
+                    h_hum = max(0.0, h_hum - 15.0)
+                
+            charts_temp.append(round(max(0.0, h_temp), 1))
+            charts_rain.append(round(max(0.0, h_rain), 1))
+            charts_wind.append(round(max(0.0, h_wind), 1))
+            charts_wind_dir.append(td_wind_dir)
+            charts_hum.append(round(h_hum, 1))
+            charts_press.append(round(h_press, 1))
+            charts_lst.append(round(h_lst, 1))
+            charts_sst.append(round(h_sst, 1))
+            charts_time.append(f"{h:02d}:00")
+
+        return Response({
+            "mode": mode,
+            "datetime": dt.isoformat(),
+            "date": target_date.isoformat(),
+            "hour": hour,
+            "districts": grid_points,
+            "metrics": {
+                "temperature": avg_temp,
+                "rainfall": avg_rain,
+                "humidity": avg_hum,
+                "wind_speed": avg_wind,
+                "pressure": avg_press,
+                "lst": avg_lst,
+                "sst": avg_sst
+            },
+            "cyclone": cyclone_data,
+            "alerts": active_alerts,
+            "charts": {
+                "time": charts_time,
+                "temperature": charts_temp,
+                "rainfall": charts_rain,
+                "wind_speed": charts_wind,
+                "wind_direction": charts_wind_dir,
+                "humidity": charts_hum,
+                "pressure": charts_press,
+                "lst": charts_lst,
+                "sst": charts_sst
+            }
+        })
 
 
 class ModelStatusView(APIView):
     """
     GET /api/model-status/
-    Returns XGBoost model loading status.
-    Used by the frontend to show an 'XGBoost Active' / 'IDW Estimate' badge.
+    Returns XGBoost status.
     """
-
     def get(self, request):
         try:
-            from ml.model_service import ModelService
             service = ModelService.get_instance()
             return Response(service.get_status())
         except Exception as e:
@@ -516,5 +1010,3 @@ class ModelStatusView(APIView):
                 'error': str(e),
                 'message': 'Model service unavailable. Using IDW fallback.'
             })
-
-

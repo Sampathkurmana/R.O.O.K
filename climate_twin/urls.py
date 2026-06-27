@@ -21,9 +21,13 @@ urlpatterns = [
     
     # DRF API Routes
     path('api/weather/', api_views.WeatherAPIView.as_view(), name='api_weather'),
+    path('api/current/', api_views.WeatherAPIView.as_view(), name='api_current'),
+    path('api/history/', api_views.HistoryAPIView.as_view(), name='api_history'),
     path('api/forecast/', api_views.ForecastAPIView.as_view(), name='api_forecast'),
     path('api/digital-twin/', api_views.DigitalTwinAPIView.as_view(), name='api_digital_twin'),
     path('api/simulator/', api_views.SimulatorAPIView.as_view(), name='api_simulator'),
+    path('api/simulate/', api_views.SimulateView.as_view(), name='api_simulate_clean'),
+    path('api/playback/', api_views.PlaybackAPIView.as_view(), name='api_playback'),
     path('api/alerts/', api_views.AlertsAPIView.as_view(), name='api_alerts'),
     path('api/reports/', api_views.ReportsAPIView.as_view(), name='api_reports'),
 
@@ -33,3 +37,6 @@ urlpatterns = [
     path('api/risk/', api_views.RiskView.as_view(), name='api_risk'),
     path('api/model-status/', api_views.ModelStatusView.as_view(), name='api_model_status'),
 ]
+
+
+
