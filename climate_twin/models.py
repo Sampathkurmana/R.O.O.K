@@ -40,12 +40,19 @@ class ClimateObservation(models.Model):
     pressure = models.FloatField(default=1008.0, help_text="Atmospheric pressure in hPa")
     wind = models.FloatField(default=14.0, help_text="Wind speed in knots")
     lst = models.FloatField(help_text="Land Surface Temperature in Celsius")
-    sst = models.FloatField(help_text="Sea Surface Temperature in Celsius")
-
+    # 🔥 FIX 1: Allow SST to be empty for land locations
+    sst = models.FloatField(null=True, blank=True, help_text="Sea Surface Temperature in Celsius")
+    # 🔥 FIX 2: THE EXODIA DATASET ML FIELDS
+    wind_u = models.FloatField(null=True, blank=True, help_text="Calculated U vector")
+    wind_v = models.FloatField(null=True, blank=True, help_text="Calculated V vector")
+    is_ocean = models.BooleanField(default=False)
+    year = models.IntegerField(null=True, blank=True)
+    month = models.IntegerField(null=True, blank=True)
+    day = models.IntegerField(null=True, blank=True)
+    day_of_year = models.IntegerField(null=True, blank=True)
     # Kept for backward compatibility with existing usages
     wind_speed = models.FloatField(default=0.0, help_text="Wind speed in knots (alias)")
     wind_direction = models.CharField(max_length=8, default="N", help_text="Wind direction vector")
-
     class Meta:
         ordering = ['-date']
         indexes = [

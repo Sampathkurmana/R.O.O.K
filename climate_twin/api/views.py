@@ -20,69 +20,155 @@ from climate_twin.services.core_engines import (
     AnalyticsRiskEngine, DigitalTwinEngine, ClimatePlaybackService
 )
 from ml.model_service import ModelService
-
 logger = logging.getLogger('rook.api')
+import requests
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from django.core.cache import cache
 
+# class WeatherAPIView(APIView):
+#     def get(self, request):
+#         lat = request.GET.get('lat', '17.6868')
+#         lng = request.GET.get('lng', '83.2185')
+        
+#         # YOUR API KEY (Get one for free at OpenWeatherMap.org)
+#         API_KEY = "280668dd93f8ac56029ab0ecf13967b1"
+#         url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lng}&appid={API_KEY}&units=metric"
+#         try:
+#             response = requests.get(url)
+#             data = response.json()
+            
+#             # 🔥 ADD THIS LINE!
+#             print("DEBUG: API Response:", data) 
+            
+#             #return Response({ ... })
+#         except Exception as e:
+#             return Response({"error": "Weather service unavailable", "details": str(e)}, status=503)
+        
+#         try:
+#             response = requests.get(url)
+#             data = response.json()
+            
+#             # Extract only what you need
+#             return Response({
+#                 "current": {
+#                     "temperature": data['main']['temp'],
+#                     "rainfall": data.get('rain', {}).get('1h', 0), # Some APIs return 0 if no rain
+#                     "humidity": data['main']['humidity'],
+#                     "wind_speed": (data['wind']['speed'] * 3.6).round(1), # Convert m/s to km/h
+#                     "wind_direction": "SW", # You can map degrees to cardinal here
+#                     "pressure": data['main']['pressure'],
+#                     "district": data['name']
+#                 }
+#             })
+        
+#         except Exception as e:
+#             # If the API fails, return a safe backup, NOT a 500 error
+#             return Response({"error": "Weather service unavailable", "details": str(e)}, status=503)
 
 class WeatherAPIView(APIView):
     """
-    GET /api/weather/ or GET /api/current
-    Returns current climate conditions for a district/coordinates.
+    GET /api/weather/
+    Fetches OpenWeatherMap (Core) + Open-Meteo (SST/LST), saves to DB, caches for 12 hours.
     """
     def get(self, request):
-        lat_str = request.GET.get('lat')
-        lng_str = request.GET.get('lng')
-        district_name = request.GET.get('district')
+        lat = float(request.GET.get('lat', 17.6868))
+        lng = float(request.GET.get('lng', 83.2185))
+        
+        # 1. THE 12-HOUR SHIELD 
+        cache_key = f"weather_{round(lat, 2)}_{round(lng, 2)}"
+        cached_data = cache.get(cache_key)
 
-        # Find nearest district or match by name
-        district = None
-        if district_name:
-            district = District.objects.filter(name__iexact=district_name).first()
-        elif lat_str and lng_str:
-            lat = float(lat_str)
-            lng = float(lng_str)
-            # Find closest district
-            districts = District.objects.all()
-            if districts.exists():
-                district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
+        if cached_data:
+            print(f"⚡ [R.O.O.K] Loading from Cache! API safe.")
+            return Response(cached_data)
 
-        if not district:
-            # Fallback to first district or create a default
-            district = District.objects.first()
+        print("🌍 [R.O.O.K] Cache empty. Fetching live satellite data...")
 
-        if district:
-            # Route to DigitalTwinEngine to get the current state
-            states = DigitalTwinEngine.get_current_state(district=district)
-            if states:
-                obs = states[0]
-            else:
-                # If no observation exists, generate it via ObservationEngine
-                obs = ObservationEngine.update_current_state(datetime.date.today(), district)
+        try:
+            # --- API 1: OPENWEATHERMAP (Core Data) ---
+            API_KEY = "280668dd93f8ac56029ab0ecf13967b1" # Your API Key
+            owm_url = f"https://api.openweathermap.org/data/2.5/weather?lat={lat}&lon={lng}&appid={API_KEY}&units=metric"
+            owm_response = requests.get(owm_url).json()
+
+            temp = owm_response['main']['temp']
+            rain = owm_response.get('rain', {}).get('1h', 0.0)
             
-            return Response({
-                "current": {
-                    "temperature": obs.temperature,
-                    "rainfall": obs.rainfall,
-                    "humidity": obs.humidity,
-                    "wind_speed": obs.wind,
-                    "wind_direction": obs.wind_direction,
-                    "pressure": obs.pressure,
-                    "lst": obs.lst,
-                    "sst": obs.sst,
-                    "district": district.name
-                }
-            })
+            # Physics: Wind Speed & Vectors
+            wind_speed_ms = owm_response['wind']['speed']
+            wind_speed_kmh = round(wind_speed_ms * 3.6, 1) # Your Python-safe km/h fix!
+            wind_deg = owm_response['wind'].get('deg', 0)
+            
+            wind_deg_rad = math.radians(wind_deg)
+            wind_u = -wind_speed_ms * math.sin(wind_deg_rad)
+            wind_v = -wind_speed_ms * math.cos(wind_deg_rad)
+            
+            # Geographic Check: Is it Ocean? 
+            is_ocean = lng > 83.2 
 
-        # Ultimate safety fallback
-        return Response({
-            "current": {
-                "temperature": 32.4,
-                "rainfall": 12.4,
-                "humidity": 78,
-                "wind_speed": 18,
-                "wind_direction": "SW"
+            # --- API 2: OPEN-METEO (LST & SST) ---
+            lst = None
+            sst = None
+            
+            if is_ocean:
+                marine_url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lng}&current=ocean_temperature"
+                marine_resp = requests.get(marine_url).json()
+                sst = marine_resp.get('current', {}).get('ocean_temperature')
+            else:
+                land_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current=surface_temperature"
+                land_resp = requests.get(land_url).json()
+                lst = land_resp.get('current', {}).get('surface_temperature')
+
+            now = datetime.datetime.now()
+            today = datetime.date.today()
+
+            # --- 3. PUSH TO THE DATABASE (Exodia Format) ---
+            ClimateObservation.objects.update_or_create(
+                date=today,
+                latitude=lat,
+                longitude=lng,
+                defaults={
+                    'rainfall': rain,
+                    'pressure': owm_response['main']['pressure'], 
+                    'wind_speed': wind_speed_kmh,
+                    'temperature': temp,
+                    'humidity': owm_response['main']['humidity'],
+                    'wind_u': wind_u,
+                    'wind_v': wind_v,
+                    'sst': sst if sst is not None else temp,  
+                    'lst': lst if lst is not None else temp,  
+                    'is_ocean': is_ocean,
+                    'year': now.year,
+                    'month': now.month,
+                    'day': now.day,
+                    'day_of_year': now.timetuple().tm_yday
+                }
+            )
+
+            # --- 4. FORMAT THE RESPONSE FOR APP.JS ---
+            final_response = {
+                "current": {
+                    "temperature": temp,
+                    "rainfall": rain,
+                    "humidity": owm_response['main']['humidity'],
+                    "wind_speed": wind_speed_kmh,
+                    "wind_direction": wind_deg,
+                    "pressure": owm_response['main']['pressure'],
+                    "district": owm_response.get('name', 'Unknown')
+                }
             }
-        })
+
+            # --- 5. LOCK THE CACHE (12 Hours) ---
+            cache.set(cache_key, final_response, timeout=43200)
+
+            return Response(final_response)
+
+        except Exception as e:
+            import traceback
+            print("🚨 [CRITICAL API ERROR] 🚨")
+            traceback.print_exc()  # This will print the EXACT line that failed!
+            print("🚨 -------------------- 🚨")
+            return Response({"error": "Satellite link failed", "details": str(e)}, status=503)
 
 
 class ForecastAPIView(APIView):

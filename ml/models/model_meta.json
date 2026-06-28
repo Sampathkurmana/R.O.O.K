@@ -1,5 +1,9 @@
 {
+<<<<<<< HEAD
   "loaded_at": "2026-06-27T15:20:59.941183",
+=======
+  "loaded_at": "2026-06-27T14:53:31.205434",
+>>>>>>> 78532cba4637ae3524ccb2c261c0441687c120d3
   "rainfall_model": "xgb_rainfall.pkl",
   "temperature_model": "xgb_temperature.pkl",
   "scaler": null,
