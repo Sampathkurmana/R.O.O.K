@@ -437,10 +437,10 @@ class PredictView(APIView):
         return self._handle_predict(lat, lng, target_date)
 
     def post(self, request):
-        try:
-            body = json.loads(request.body)
-        except (json.JSONDecodeError, AttributeError):
-            body = request.data
+        # try:
+        #     body = json.loads(request.body)
+        # except (json.JSONDecodeError, AttributeError):
+        body = request.data
 
         lat = float(body.get('lat', 15.9129))
         lng = float(body.get('lng', 79.7400))
