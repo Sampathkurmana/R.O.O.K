@@ -955,4 +955,11 @@ input[type="range"]::-webkit-slider-thumb:hover {
     to { transform: rotate(0deg); }
 }
 
+/* Ensure select option texts are always readable on white backgrounds */
+select option {
+    background-color: #ffffff !important;
+    color: #0f172a !important; /* slate-900 */
+}
+
+
 

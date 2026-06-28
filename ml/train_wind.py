@@ -5,8 +5,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error, r2_score
 import joblib
 
-# 1. Load the mess you gave me
-df = pd.read_csv(r"D:\2026\R.O.O.K\ml\datasets\dataset.csv")
+# 1. Load the dataset dynamically relative to this script
+dataset_path = Path(__file__).resolve().parent / "datasets" / "dataset.csv"
+df = pd.read_csv(dataset_path)
 
 # 2. Clean up: Drop rows where we don't even know the target wind speed
 df = df.dropna(subset=['WindSpeed'])
