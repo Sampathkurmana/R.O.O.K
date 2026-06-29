@@ -15,7 +15,12 @@ const AppState = {
     simulator: {
         temp: 0.0,
         rain: 0.0,
-        humidity: 0.0
+        humidity: 0.0,
+        wind: 0.0,
+        pressure: 0.0,
+        lst: 0.0,
+        sst: 0.0,
+        cloud: 0.0
     },
     selectedDistrict: 'Andhra Pradesh',
     selectedLat: 15.9129,          // updated on map click / station select
@@ -39,6 +44,8 @@ const AppState = {
     cycloneEye: null,
     isEvolutionMode: false,
     activeScenario: null,          // 'heatwave', 'cyclone', 'flood', 'drought', 'uhi', 'monsoon'
+    isCesiumInitialized: false,
+    globeAutoRotate: false,
     districtLayer: null,
     districtLayerRight: null,
     apGeoJSON: null,
@@ -791,22 +798,75 @@ function setupEventListeners() {
     document.getElementById("re-center")?.addEventListener("click", () => resetMapView());
 
     // Scenario Simulator Perturbations
-    const sliders = ['temp', 'rain', 'humidity'];
+    const sliders = ['temp', 'rain', 'humidity', 'wind', 'pressure', 'lst', 'sst', 'cloud'];
     sliders.forEach(key => {
         const slider = document.getElementById(`sim-${key}`);
         const valIndicator = document.getElementById(`sim-${key}-val`);
         if (slider) {
             slider.addEventListener("input", (e) => {
+                let val = parseFloat(e.target.value);
                 let displayVal = e.target.value;
-                if (key === 'temp') displayVal = (parseFloat(displayVal) > 0 ? '+' : '') + parseFloat(displayVal).toFixed(1) + '°C';
-                if (key === 'rain') displayVal = (parseInt(displayVal) > 0 ? '+' : '') + displayVal + '%';
-                if (key === 'humidity') displayVal = (parseInt(displayVal) > 0 ? '+' : '') + displayVal + '%';
+                if (key === 'temp' || key === 'lst' || key === 'sst') {
+                    displayVal = (val > 0 ? '+' : '') + val.toFixed(1) + '°C';
+                } else if (key === 'rain' || key === 'humidity' || key === 'cloud') {
+                    displayVal = (val > 0 ? '+' : '') + val + '%';
+                } else if (key === 'wind') {
+                    displayVal = (val > 0 ? '+' : '') + val + ' kt';
+                } else if (key === 'pressure') {
+                    displayVal = (val > 0 ? '+' : '') + val + ' hPa';
+                }
 
-                valIndicator.innerText = displayVal;
-                AppState.simulator[key] = parseFloat(e.target.value);
-                triggerSimulation();
+                if (valIndicator) valIndicator.innerText = displayVal;
+                AppState.simulator[key] = val;
             });
         }
+    });
+
+    // Reset Variables Button
+    document.getElementById("btn-reset-variables")?.addEventListener("click", () => {
+        sliders.forEach(key => {
+            const slider = document.getElementById(`sim-${key}`);
+            const valIndicator = document.getElementById(`sim-${key}-val`);
+            let defaultVal = 0.0;
+            
+            if (slider) {
+                slider.value = defaultVal;
+                let displayVal = "0.0°C";
+                if (key === 'rain' || key === 'humidity' || key === 'cloud') displayVal = "0%";
+                else if (key === 'wind') displayVal = "0 kt";
+                else if (key === 'pressure') displayVal = "0 hPa";
+                if (valIndicator) valIndicator.innerText = displayVal;
+            }
+            AppState.simulator[key] = defaultVal;
+        });
+        showNotification("Variables Reset", "All experiment perturbations restored to baseline states.", "info");
+    });
+
+    // Run Simulation Button
+    document.getElementById("btn-run-simulation")?.addEventListener("click", () => {
+        triggerSimulation();
+    });
+
+    // Results Tab Switcher
+    document.querySelectorAll(".sim-tab").forEach(tab => {
+        tab.addEventListener("click", (e) => {
+            document.querySelectorAll(".sim-tab").forEach(t => {
+                t.classList.remove("bg-slate-800/80", "text-cyan-400");
+                t.classList.add("text-slate-400");
+            });
+            tab.classList.add("bg-slate-800/80", "text-cyan-400");
+            tab.classList.remove("text-slate-400");
+
+            const targetId = tab.getAttribute("data-target");
+            document.querySelectorAll(".sim-tab-content").forEach(content => {
+                content.classList.add("hidden");
+            });
+            const targetEl = document.getElementById(targetId);
+            if (targetEl) {
+                targetEl.classList.remove("hidden");
+                gsap.fromTo(targetEl, { opacity: 0, y: 5 }, { opacity: 1, y: 0, duration: 0.25 });
+            }
+        });
     });
 
     // Handle Report Generators
@@ -1018,6 +1078,25 @@ function switchPanel(panelName) {
         }
     }
 
+    // Toggle Leaflet Map vs Cesium space globe containers
+    const mapContainerEl = document.getElementById("map-container");
+    const satGlobeContainerEl = document.getElementById("satellite-globe-container");
+    
+    if (panelName === 'satellite') {
+        if (mapContainerEl) mapContainerEl.classList.add("hidden");
+        if (satGlobeContainerEl) {
+            satGlobeContainerEl.classList.remove("hidden");
+            // Delay init/resize so the container is visible in DOM first
+            setTimeout(() => {
+                initCesiumGlobe();
+                if (globeViewer) globeViewer.resize();
+            }, 60);
+        }
+    } else {
+        if (satGlobeContainerEl) satGlobeContainerEl.classList.add("hidden");
+        if (mapContainerEl) mapContainerEl.classList.remove("hidden");
+    }
+
     if (panelName === 'dashboard') {
         // Show dashboard widgets with animation
         if (dashboardWidgets) {
@@ -1041,23 +1120,27 @@ function switchPanel(panelName) {
             dashboardWidgets.style.display = "none";
         }
 
-        // Show right panel container
+        // Show right panel container (except on satellite view)
         if (rightPanelContainer) {
-            rightPanelContainer.classList.remove("hidden");
+            if (panelName === 'satellite') {
+                rightPanelContainer.classList.add("hidden");
+            } else {
+                rightPanelContainer.classList.remove("hidden");
+            }
         }
 
-        // Toggle layers panel for map-centric overlays
+        // Toggle layers panel for map-centric overlays (except on satellite view which has its own Layer hud)
         if (layersPanel) {
-            if (['weather', 'satellite', 'digital-twin', 'simulator'].includes(panelName)) {
+            if (['weather', 'digital-twin', 'simulator'].includes(panelName)) {
                 layersPanel.classList.remove("hidden");
             } else {
                 layersPanel.classList.add("hidden");
             }
         }
 
-        // Keep legend on weather/satellite/analytics
+        // Keep legend on weather/analytics (except on satellite view)
         if (mapLegend) {
-            if (['weather', 'satellite', 'digital-twin', 'analytics'].includes(panelName)) {
+            if (['weather', 'digital-twin', 'analytics'].includes(panelName)) {
                 mapLegend.classList.remove("hidden");
             } else {
                 mapLegend.classList.add("hidden");
@@ -1071,10 +1154,26 @@ function switchPanel(panelName) {
             wrap.style.opacity = 0;
         });
 
-        const activeWrap = document.getElementById(`panel-${panelName}`);
-        if (activeWrap) {
-            activeWrap.classList.remove("hidden");
-            gsap.to(activeWrap, { opacity: 1, duration: 0.4, x: 0, ease: "power2.out" });
+        // For panel-satellite, we handle it specially since it is a full viewport hud overlay
+        const satWrap = document.getElementById("panel-satellite");
+        if (panelName === 'satellite') {
+            if (satWrap) {
+                satWrap.classList.remove("hidden");
+                gsap.to(satWrap, { opacity: 1, duration: 0.4 });
+                // Populate initial cards
+                const activeStation = DISTRICT_STATIONS.find(s => s.name === AppState.selectedDistrict) || DISTRICT_STATIONS[0];
+                syncSatClimateCards(activeStation);
+            }
+        } else {
+            if (satWrap) {
+                satWrap.classList.add("hidden");
+                satWrap.style.opacity = 0;
+            }
+            const activeWrap = document.getElementById(`panel-${panelName}`);
+            if (activeWrap) {
+                activeWrap.classList.remove("hidden");
+                gsap.to(activeWrap, { opacity: 1, duration: 0.4, x: 0, ease: "power2.out" });
+            }
         }
 
         // Re-initialize/resize ApexCharts on Analytics panel activation to recalculate widths
@@ -1172,6 +1271,13 @@ async function triggerSimulation() {
     const lat = AppState.selectedLat || 15.9129;
     const lng = AppState.selectedLng || 79.7400;
 
+    // Show simulation loader
+    const loader = document.getElementById("simulation-loader");
+    if (loader) {
+        loader.style.opacity = "1";
+        loader.style.pointerEvents = "auto";
+    }
+
     try {
         const resp = await fetch('/api/predict-simulate/', {
             method: 'POST',
@@ -1184,29 +1290,132 @@ async function triggerSimulation() {
                 lng,
                 temp_delta: AppState.simulator.temp,
                 rain_delta: AppState.simulator.rain,
-                humidity_change: AppState.simulator.humidity
+                humidity_change: AppState.simulator.humidity,
+                wind_change: AppState.simulator.wind,
+                pressure_change: AppState.simulator.pressure,
+                lst_change: AppState.simulator.lst,
+                sst_change: AppState.simulator.sst,
+                cloud_change: AppState.simulator.cloud,
+                scenario_category: AppState.activeScenario || 'Custom',
+                date: `${AppState.timeYear}-${String(AppState.timeMonth).padStart(2, '0')}-${String(AppState.timeDay).padStart(2, '0')}`
             })
         });
         const data = await resp.json();
 
-        // Update Simulator Dashboard
-        updateRiskBadge('risk-drought', data.drought_risk || (data.risk || {}).drought || 'Low');
-        updateRiskBadge('risk-flood', data.flood_risk || (data.risk || {}).flood || 'Low');
-        updateRiskBadge('risk-heatwave', data.heatwave_risk || (data.risk || {}).heatwave || 'Low');
+        // 1. UPDATE TAB 1: Climate State
+        const base = data.baseline || {};
+        const sim = data.simulated || {};
+        
+        document.getElementById("state-base-temp").innerText = base.temperature !== undefined ? `${base.temperature.toFixed(1)}°C` : '-';
+        document.getElementById("state-sim-temp").innerText = sim.temperature !== undefined ? `${sim.temperature.toFixed(1)}°C` : '-';
+        document.getElementById("state-base-rain").innerText = base.rainfall !== undefined ? `${base.rainfall.toFixed(1)} mm` : '-';
+        document.getElementById("state-sim-rain").innerText = sim.rainfall !== undefined ? `${sim.rainfall.toFixed(1)} mm` : '-';
+        document.getElementById("state-source").innerText = data.source === 'xgboost_simulation' ? 'Ensemble XGBoost Models' : 'IDW Reference Network';
+        document.getElementById("state-confidence").innerText = data.source === 'xgboost_simulation' ? '92.4% (Confidence)' : 'Spatial Estimate (Interpolated)';
 
-        const agriEl = document.getElementById('risk-agri');
+        // Update district configuration info
+        document.getElementById("simulator-active-district").innerText = AppState.selectedDistrict || 'Andhra Pradesh';
+
+        // 2. UPDATE TAB 2: Risk Assessment
+        const risks = data.risk || {};
+        
+        updateRiskBadge('risk-gauge-drought', risks.drought || 'Low');
+        updateRiskBadge('risk-gauge-flood', risks.flood || 'Low');
+        updateRiskBadge('risk-gauge-heatwave', risks.heatwave || 'Low');
+        updateRiskBadge('risk-gauge-cyclone', risks.cyclone || 'Low');
+        
+        const agriEl = document.getElementById('risk-gauge-agri');
         if (agriEl) agriEl.innerText = data.agricultural_impact || 'Optimal Yield Output';
+        
+        const waterVal = data.water_stress_index || 0.0;
+        const waterEl = document.getElementById('risk-gauge-water');
+        if (waterEl) waterEl.innerText = waterVal.toFixed(1) + '%';
+        const waterBar = document.getElementById('risk-gauge-water-progress');
+        if (waterBar) waterBar.style.width = waterVal + '%';
 
-        const waterEl = document.getElementById('risk-water');
-        if (waterEl) waterEl.innerText = (data.water_stress_index || 45).toFixed(1) + '%';
+        // 3. UPDATE TAB 3: Climate Evolution (Comparison Table)
+        const tbody = document.getElementById("evolution-table-body");
+        if (tbody) {
+            tbody.innerHTML = "";
+            const rows = [
+                { name: "Temperature", key: "temperature", suffix: "°C" },
+                { name: "Precipitation", key: "rainfall", suffix: " mm" },
+                { name: "Relative Humidity", key: "humidity", suffix: "%" },
+                { name: "Wind Velocity", key: "wind", suffix: " kt" },
+                { name: "Surface Pressure", key: "pressure", suffix: " hPa" },
+                { name: "LST", key: "lst", suffix: "°C" },
+                { name: "SST", key: "sst", suffix: "°C" },
+                { name: "Cloud Cover", key: "cloud_cover", suffix: "%" }
+            ];
 
-        const progressEl = document.getElementById('stress-progress');
-        if (progressEl) progressEl.style.width = (data.water_stress_index || 45) + '%';
+            rows.forEach(r => {
+                const bVal = base[r.key] || 0.0;
+                const sVal = sim[r.key] || 0.0;
+                const diff = sVal - bVal;
+                
+                let pctShift = "";
+                if (bVal !== 0) {
+                    const shift = (diff / bVal) * 100;
+                    pctShift = `${shift > 0 ? '+' : ''}${shift.toFixed(1)}%`;
+                } else {
+                    pctShift = diff > 0 ? '+100%' : '0%';
+                }
 
-        // Modify map boundary style based on risk
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-800/10 transition">
+                        <td class="py-1.5 font-semibold text-slate-400 text-[10px]">${r.name}</td>
+                        <td class="py-1.5 font-mono text-[10px]">${bVal.toFixed(1)}${r.suffix}</td>
+                        <td class="py-1.5 font-mono text-cyan-400 text-[10px]">${sVal.toFixed(1)}${r.suffix}</td>
+                        <td class="py-1.5 text-right font-mono text-[10px] ${diff > 0 ? 'text-red-400' : diff < 0 ? 'text-emerald-400' : 'text-slate-500'}">
+                            ${diff > 0 ? '+' : ''}${diff.toFixed(1)}${r.suffix} (${pctShift})
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+
+        // 4. UPDATE TAB 4: AI Explanation
+        const chainFlow = document.getElementById("causal-chain-flow");
+        if (chainFlow && data.reasoning_chain) {
+            chainFlow.innerHTML = "";
+            data.reasoning_chain.forEach((step, idx) => {
+                const arrow = idx > 0 ? `<div class="text-center my-0.5 text-cyan-500/70">↓</div>` : '';
+                chainFlow.innerHTML += `
+                    ${arrow}
+                    <div class="bg-navy-950/50 p-1.5 rounded border border-slate-850 flex flex-col gap-0.5 transition hover:border-slate-800">
+                        <div class="flex justify-between items-center text-[9px] font-bold">
+                            <span class="text-slate-400 uppercase tracking-wider">${step.label}</span>
+                            <span class="text-cyan-400 font-mono">${step.value}</span>
+                        </div>
+                        <p class="text-[9.5px] text-slate-500">${step.effect}</p>
+                    </div>
+                `;
+            });
+        }
+
+        const barsContainer = document.getElementById("influential-vars-bars");
+        if (barsContainer && data.influential_variables) {
+            barsContainer.innerHTML = "";
+            data.influential_variables.forEach(v => {
+                const pctVal = v.value || 0;
+                barsContainer.innerHTML += `
+                    <div class="flex flex-col gap-1 text-[9px]">
+                        <div class="flex justify-between font-semibold">
+                            <span class="text-slate-400">${v.name}</span>
+                            <span class="text-slate-300 font-mono">${pctVal.toFixed(1)}%</span>
+                        </div>
+                        <div class="w-full bg-slate-850 h-1 rounded-full overflow-hidden">
+                            <div class="bg-cyan-500 h-full rounded-full transition-all duration-350" style="width: ${pctVal}%;"></div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // Map updates
         if (AppState.districtLayer) {
-            const dr = data.drought_risk || (data.risk || {}).drought;
-            const fr = data.flood_risk || (data.risk || {}).flood;
+            const dr = risks.drought;
+            const fr = risks.flood;
             if (fr === 'High' || fr === 'Critical') {
                 AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#f87171', dashArray: '6, 6' });
             } else if (dr === 'High' || dr === 'Critical') {
@@ -1216,42 +1425,17 @@ async function triggerSimulation() {
             }
         }
 
-        // Trigger canvas gradient update with simulation adjustments
         updateMapLayers(true);
+        showNotification("Simulation Complete", "Twin calculations complete. Results synced to dashboard tabs.", "success");
 
     } catch (err) {
-        console.warn('[R.O.O.K] Simulate API failed, using legacy engine:', err);
-        // Fallback to old SimulatorAPIView
-        fetch('/api/simulator/', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-            body: JSON.stringify({
-                temp_change: AppState.simulator.temp,
-                rainfall_change: AppState.simulator.rain,
-                humidity_change: AppState.simulator.humidity
-
-                
-            })
-        })
-            .then(res => res.json())
-            .then(data => {
-                updateRiskBadge('risk-drought', data.drought_risk);
-                updateRiskBadge('risk-flood', data.flood_risk);
-                updateRiskBadge('risk-heatwave', data.heatwave_risk);
-                document.getElementById('risk-agri').innerText = data.agricultural_impact;
-                document.getElementById('risk-water').innerText = data.water_stress_index.toFixed(1) + '%';
-                document.getElementById('stress-progress').style.width = data.water_stress_index + '%';
-                if (AppState.districtLayer) {
-                    if (data.flood_risk === 'Critical' || data.flood_risk === 'High') {
-                        AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#f87171', dashArray: '6, 6' });
-                    } else if (data.drought_risk === 'Critical' || data.drought_risk === 'High') {
-                        AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#fb923c', dashArray: '6, 6' });
-                    } else {
-                        AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#ffffff', dashArray: '6, 6' });
-                    }
-                }
-                updateMapLayers(true);
-            });
+        console.error('[R.O.O.K] Scientific simulate API failed:', err);
+        showNotification("Simulation Failed", "Communication link to backend engines broken.", "error");
+    } finally {
+        if (loader) {
+            loader.style.opacity = "0";
+            loader.style.pointerEvents = "none";
+        }
     }
 }
 
@@ -1259,11 +1443,16 @@ function updateRiskBadge(id, level) {
     const el = document.getElementById(id);
     if (!el) return;
     el.innerText = level;
-    el.className = "text-xs px-2 py-0.5 rounded font-bold uppercase ";
-    if (level === "Critical") el.classList.add("badge-critical");
-    else if (level === "High") el.classList.add("badge-high");
-    else if (level === "Medium") el.classList.add("badge-medium");
-    else el.classList.add("badge-low");
+    el.className = "text-[9px] px-1.5 py-0.5 rounded font-bold uppercase border ";
+    if (level === "Critical") {
+        el.className += "bg-red-500/20 text-red-400 border-red-500/30";
+    } else if (level === "High") {
+        el.className += "bg-orange-500/20 text-orange-400 border-orange-500/30";
+    } else if (level === "Medium") {
+        el.className += "bg-yellow-500/20 text-yellow-400 border-yellow-500/30";
+    } else {
+        el.className += "bg-emerald-500/20 text-emerald-400 border-emerald-500/30";
+    }
 }
 
 // Fetch timeline digital twin interpolation
@@ -2186,7 +2375,7 @@ function updateTimeNavigationState() {
 
             const coreEl = dot.querySelector(".dot-core");
             if (coreEl) {
-                coreEl.innerText = String(dotDate.getDate()).padStart(2, '0');
+                coreEl.innerText = ""; // Empty dot-core: no text inside the dot (all date labels kept outside the dot)
             }
 
             dot.classList.remove("active", "passed");
@@ -3267,35 +3456,752 @@ function triggerScenarioPreset(scenario) {
         activeBtn.style.boxShadow = "0 0 10px rgba(0, 210, 255, 0.2) inset";
     }
 
-    let temp = 0.0, rain = 0, hum = 0;
-    if (scenario === 'heatwave') { temp = 4.5; rain = -30; hum = -10; AppState.activeLayers.temperature = true; }
-    else if (scenario === 'cyclone') { temp = 1.0; rain = 35; hum = 15; AppState.activeLayers.wind = true; }
-    else if (scenario === 'flood') { temp = -0.5; rain = 40; hum = 10; AppState.activeLayers.rainfall = true; }
-    else if (scenario === 'drought') { temp = 3.0; rain = -50; hum = -15; AppState.activeLayers.humidity = true; }
-    else if (scenario === 'uhi') { temp = 2.5; rain = -5; hum = -5; AppState.activeLayers.temperature = true; }
-    else if (scenario === 'monsoon') { temp = 1.5; rain = -25; hum = -8; AppState.activeLayers.rainfall = true; }
+    // Default all simulator variables to 0
+    let temp = 0, rain = 0, hum = 0, wind = 0, press = 0, lst = 0, sst = 0, cloud = 0;
 
+    // Apply specific preset anomalies
+    if (scenario === 'heatwave') {
+        temp = 4.5; rain = -30; hum = -10; lst = 2.5; cloud = -20;
+        AppState.activeLayers.temperature = true;
+    } else if (scenario === 'coldwave') {
+        temp = -4.0; rain = -10; hum = -15; lst = -2.0; cloud = -10;
+        AppState.activeLayers.temperature = true;
+    } else if (scenario === 'flood') {
+        temp = -0.5; rain = 40; hum = 10; press = -5; cloud = 30;
+        AppState.activeLayers.rainfall = true;
+    } else if (scenario === 'heavyrain') {
+        temp = -1.0; rain = 50; hum = 15; press = -8; cloud = 40;
+        AppState.activeLayers.rainfall = true;
+    } else if (scenario === 'cyclone') {
+        temp = 1.0; rain = 35; hum = 15; wind = 25; press = -15; sst = 2.0; cloud = 45;
+        AppState.activeLayers.wind = true;
+    } else if (scenario === 'drought') {
+        temp = 3.0; rain = -50; hum = -15; lst = 1.8; cloud = -35;
+        AppState.activeLayers.humidity = true;
+    } else if (scenario === 'uhi') {
+        temp = 2.5; rain = -5; hum = -5; lst = 3.0;
+        AppState.activeLayers.temperature = true;
+    } else if (scenario === 'marine') {
+        temp = 1.0; sst = 2.5;
+        AppState.activeLayers.temperature = true;
+    } else if (scenario === 'monsoondelay') {
+        temp = 1.5; rain = -25; hum = -8; cloud = -15;
+        AppState.activeLayers.rainfall = true;
+    } else if (scenario === 'monsoonadv') {
+        temp = -1.0; rain = 30; hum = 10; cloud = 20;
+        AppState.activeLayers.rainfall = true;
+    }
+
+    // Set state
     AppState.simulator.temp = temp;
     AppState.simulator.rain = rain;
     AppState.simulator.humidity = hum;
+    AppState.simulator.wind = wind;
+    AppState.simulator.pressure = press;
+    AppState.simulator.lst = lst;
+    AppState.simulator.sst = sst;
+    AppState.simulator.cloud = cloud;
 
-    const tempSlider = document.getElementById("sim-temp");
-    if (tempSlider) tempSlider.value = temp;
-    const tempVal = document.getElementById("sim-temp-val");
-    if (tempVal) tempVal.innerText = (temp > 0 ? '+' : '') + temp.toFixed(1) + '°C';
-
-    const rainSlider = document.getElementById("sim-rain");
-    if (rainSlider) rainSlider.value = rain;
-    const rainVal = document.getElementById("sim-rain-val");
-    if (rainVal) rainVal.innerText = (rain > 0 ? '+' : '') + rain + '%';
-
-    const humSlider = document.getElementById("sim-humidity");
-    if (humSlider) humSlider.value = hum;
-    const humVal = document.getElementById("sim-humidity-val");
-    if (humVal) humVal.innerText = (hum > 0 ? '+' : '') + hum + '%';
+    // Update DOM inputs and indicators
+    const mapKeys = { temp, rain, humidity: hum, wind, pressure: press, lst, sst, cloud };
+    const sliders = ['temp', 'rain', 'humidity', 'wind', 'pressure', 'lst', 'sst', 'cloud'];
+    sliders.forEach(key => {
+        const slider = document.getElementById(`sim-${key}`);
+        const valIndicator = document.getElementById(`sim-${key}-val`);
+        const val = mapKeys[key];
+        
+        if (slider) slider.value = val;
+        if (valIndicator) {
+            let displayVal = val;
+            if (key === 'temp' || key === 'lst' || key === 'sst') {
+                displayVal = (val > 0 ? '+' : '') + val.toFixed(1) + '°C';
+            } else if (key === 'rain' || key === 'humidity' || key === 'cloud') {
+                displayVal = (val > 0 ? '+' : '') + val + '%';
+            } else if (key === 'wind') {
+                displayVal = (val > 0 ? '+' : '') + val + ' kt';
+            } else if (key === 'pressure') {
+                displayVal = (val > 0 ? '+' : '') + val + ' hPa';
+            }
+            valIndicator.innerText = displayVal;
+        }
+    });
 
     syncLayerButtonsUI();
     updateMapLegend();
     updateVisualHazards();
     triggerSimulation();
+}
+
+// ─── Cesium 3D Space Globe Engine ─────────────────────────────────────────────
+
+let globeViewer = null;
+let globeDistrictsDataSource = null;
+let globeAutoRotateListener = null;
+let globeCycloneEntity = null;
+let satPlaybackInterval = null;
+let satPlaybackSpeed = 1;
+
+function initCesiumGlobe() {
+    if (AppState.isCesiumInitialized) return;
+
+    // Clear Ion token - avoids login popups
+    Cesium.Ion.defaultAccessToken = '';
+
+    // ── Viewer ──────────────────────────────────────────────────────────────────
+    globeViewer = new Cesium.Viewer('cesiumContainer', {
+        geocoder:             false,
+        homeButton:           false,
+        sceneModePicker:      false,
+        baseLayerPicker:      false,
+        navigationHelpButton: false,
+        animation:            false,
+        timeline:             false,
+        fullscreenButton:     false,
+        vrButton:             false,
+        imageryProvider: new Cesium.UrlTemplateImageryProvider({
+            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            maximumLevel: 19
+        })
+        // NOTE: skyBox is left as DEFAULT so Cesium renders the real Milky Way star field
+    });
+
+    // Hide credit bar
+    if (globeViewer.bottomContainer) globeViewer.bottomContainer.style.display = 'none';
+
+    // ── Scene settings ───────────────────────────────────────────────────────────
+    const scene = globeViewer.scene;
+    scene.globe.showGroundAtmosphere = true;
+    scene.globe.enableLighting       = true;
+    scene.light                      = new Cesium.SunLight();
+    scene.fog.enabled                = true;
+    scene.skyAtmosphere.show         = true;
+
+    // ── Camera: start above India ────────────────────────────────────────────────
+    flyToIndia(false);
+
+    // ── GeoJSON district boundaries ──────────────────────────────────────────────
+    Cesium.GeoJsonDataSource.load('/static/geojson/ap-districts.json', {
+        stroke:      Cesium.Color.fromCssColorString('#00E5FF').withAlpha(0.90),
+        strokeWidth: 3,
+        fill:        Cesium.Color.fromCssColorString('#00B8D9').withAlpha(0.18)
+    }).then(function(ds) {
+        globeDistrictsDataSource = ds;
+        globeViewer.dataSources.add(ds);
+        setupGlobeInteraction();
+        colorGlobeDistricts();
+    });
+
+    // ── Satellites ───────────────────────────────────────────────────────────────
+    setupOrbitingSatellites();
+
+    // ── Cyclone ──────────────────────────────────────────────────────────────────
+    setupGlobeCyclone();
+
+    // ── HUD Controls ─────────────────────────────────────────────────────────────
+    setupGlobeControls();
+
+    AppState.isCesiumInitialized = true;
+    console.log('[R.O.O.K] Cesium 3D Space Globe Initialised ✓');
+}
+
+function flyToIndia(animate = true) {
+    if (!globeViewer) return;
+    // 3 500 km – shows all of India + Indian Ocean, a real "from space" perspective
+    const dest = Cesium.Cartesian3.fromDegrees(79.74, 20.00, 3500000);
+    const orient = {
+        heading: Cesium.Math.toRadians(0),
+        pitch:   Cesium.Math.toRadians(-55),   // slight tilt so the horizon & space are visible
+        roll:    0
+    };
+    if (animate) {
+        globeViewer.camera.flyTo({ destination: dest, orientation: orient, duration: 2.4 });
+    } else {
+        globeViewer.camera.setView({ destination: dest, orientation: orient });
+    }
+}
+
+// ── Draw one realistic spacecraft on a canvas and return it as a data-URL ────────
+function drawSatelliteCanvas(accentColor) {
+    const size = 128;
+    const c    = document.createElement('canvas');
+    c.width  = size;
+    c.height = size;
+    const ctx = c.getContext('2d');
+
+    const cx = size / 2;
+    const cy = size / 2;
+
+    // ── Solar panels (left wing) ──────────────────────────────────────────────────
+    const panelGrad = ctx.createLinearGradient(2, cy - 10, 44, cy + 10);
+    panelGrad.addColorStop(0,   '#1a237e');
+    panelGrad.addColorStop(0.4, '#283593');
+    panelGrad.addColorStop(1,   '#1565c0');
+    ctx.fillStyle = panelGrad;
+    ctx.fillRect(2, cy - 10, 42, 20);
+
+    // grid lines on left panel
+    ctx.strokeStyle = accentColor;
+    ctx.lineWidth   = 0.6;
+    for (let x = 2; x <= 44; x += 10) { ctx.beginPath(); ctx.moveTo(x, cy-10); ctx.lineTo(x, cy+10); ctx.stroke(); }
+    for (let y = cy-10; y <= cy+10; y += 10) { ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(44, y); ctx.stroke(); }
+
+    // ── Solar panels (right wing) ─────────────────────────────────────────────────
+    const panelGradR = ctx.createLinearGradient(size - 44, cy - 10, size - 2, cy + 10);
+    panelGradR.addColorStop(0, '#1565c0'); panelGradR.addColorStop(0.6, '#283593'); panelGradR.addColorStop(1, '#1a237e');
+    ctx.fillStyle = panelGradR;
+    ctx.fillRect(size - 44, cy - 10, 42, 20);
+
+    // grid lines on right panel
+    for (let x = size - 44; x <= size - 2; x += 10) { ctx.beginPath(); ctx.moveTo(x, cy-10); ctx.lineTo(x, cy+10); ctx.stroke(); }
+    for (let y = cy-10; y <= cy+10; y += 10)         { ctx.beginPath(); ctx.moveTo(size-44, y); ctx.lineTo(size-2, y); ctx.stroke(); }
+
+    // ── Central bus / chassis ─────────────────────────────────────────────────────
+    const bodyGrad = ctx.createLinearGradient(cx - 16, cy - 18, cx + 16, cy + 18);
+    bodyGrad.addColorStop(0,   '#bfa040');
+    bodyGrad.addColorStop(0.3, '#d4a829');
+    bodyGrad.addColorStop(0.7, '#c8961e');
+    bodyGrad.addColorStop(1,   '#9e7a10');
+    ctx.fillStyle   = bodyGrad;
+    ctx.shadowColor = '#FFD700';
+    ctx.shadowBlur  = 6;
+    ctx.fillRect(cx - 16, cy - 18, 32, 36);
+    ctx.shadowBlur  = 0;
+
+    // Bus thermal stripe
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    ctx.fillRect(cx - 16, cy - 4, 32, 8);
+
+    // Bus outline
+    ctx.strokeStyle = '#FFD700';
+    ctx.lineWidth   = 1.2;
+    ctx.strokeRect(cx - 16, cy - 18, 32, 36);
+
+    // ── Antenna dish (top of bus) ─────────────────────────────────────────────────
+    ctx.beginPath();
+    ctx.ellipse(cx, cy - 24, 10, 5, 0, 0, Math.PI * 2);
+    ctx.fillStyle   = '#e0e0e0';
+    ctx.shadowColor = '#ffffff';
+    ctx.shadowBlur  = 3;
+    ctx.fill();
+    ctx.strokeStyle = '#9e9e9e';
+    ctx.lineWidth   = 0.8;
+    ctx.stroke();
+    ctx.shadowBlur  = 0;
+
+    // Dish stem
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 18);
+    ctx.lineTo(cx, cy - 19);
+    ctx.strokeStyle = '#bdbdbd';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    // ── Thruster plume glow ───────────────────────────────────────────────────────
+    const plumeGrad = ctx.createRadialGradient(cx, cy + 18, 0, cx, cy + 26, 10);
+    plumeGrad.addColorStop(0,   accentColor);
+    plumeGrad.addColorStop(0.5, accentColor.replace(')', ', 0.4)').replace('rgb', 'rgba'));
+    plumeGrad.addColorStop(1,   'transparent');
+    ctx.fillStyle = plumeGrad;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 26, 6, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Name label ────────────────────────────────────────────────────────────────
+    // (no text — canvas label would be unreadable at small sizes)
+
+    return c.toDataURL();
+}
+
+function setupOrbitingSatellites() {
+    if (!globeViewer) return;
+
+    // Pre-render satellite images at high DPI
+    const insat3dImg  = drawSatelliteCanvas('rgb(0,229,255)');   // cyan for INSAT-3D
+    const insat3drImg = drawSatelliteCanvas('rgb(255,214,0)');   // gold for INSAT-3DR
+
+    // INSAT-3D & INSAT-3DR orbit at ~36 000 km (GEO), tilted slightly around India
+    const orbits = [
+        {
+            img:    insat3dImg,
+            label:  'INSAT-3D',
+            color:  Cesium.Color.fromCssColorString('#00E5FF'),
+            offset: 0,
+            alt:    36000000,       // 36 000 km  GEO
+            latAmp: 3,              // small inclination wobble
+            lngAmp: 18
+        },
+        {
+            img:    insat3drImg,
+            label:  'INSAT-3DR',
+            color:  Cesium.Color.fromCssColorString('#FFD600'),
+            offset: Math.PI,
+            alt:    36000000,
+            latAmp: 3,
+            lngAmp: 18
+        }
+    ];
+
+    // ── Draw orbit ring + create satellite entity ─────────────────────────────────
+    orbits.forEach(o => {
+        // Orbit track (ring at GEO altitude)
+        const orbitPts = [];
+        for (let deg = 0; deg <= 360; deg += 3) {
+            const rad = Cesium.Math.toRadians(deg);
+            orbitPts.push(Cesium.Cartesian3.fromDegrees(
+                79.74 + Math.cos(rad) * o.lngAmp,
+                20.0  + Math.sin(rad) * o.latAmp,
+                o.alt
+            ));
+        }
+        globeViewer.entities.add({
+            polyline: {
+                positions: orbitPts,
+                width: 1,
+                material: new Cesium.PolylineDashMaterialProperty({
+                    color: o.color.withAlpha(0.22),
+                    dashLength: 10
+                })
+            }
+        });
+
+        // Scanner beam cone from GEO to surface (translucent)
+        const beamEntity = globeViewer.entities.add({
+            name: o.label + ' Beam',
+            cylinder: {
+                length:       o.alt,
+                topRadius:    0,
+                bottomRadius: 1800000,          // ~1 800 km footprint – realistic INSAT coverage
+                material:     o.color.withAlpha(0.04),
+                outline:      true,
+                outlineColor: o.color.withAlpha(0.12),
+                outlineWidth: 1
+            }
+        });
+        o.beamEntity = beamEntity;
+
+        // Satellite billboard – canvas-drawn spacecraft image
+        const satEntity = globeViewer.entities.add({
+            name: o.label,
+            billboard: {
+                image:                o.img,
+                width:                48,
+                height:               48,
+                verticalOrigin:       Cesium.VerticalOrigin.CENTER,
+                horizontalOrigin:     Cesium.HorizontalOrigin.CENTER,
+                scaleByDistance:      new Cesium.NearFarScalar(1e6, 2.0, 3.6e7, 1.0),
+                translucencyByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1e8, 0.4),
+                disableDepthTestDistance: Number.POSITIVE_INFINITY
+            },
+            label: {
+                text:                 o.label,
+                font:                 '11px Inter, sans-serif',
+                fillColor:            o.color,
+                outlineColor:         Cesium.Color.BLACK,
+                outlineWidth:         2,
+                style:                Cesium.LabelStyle.FILL_AND_OUTLINE,
+                pixelOffset:          new Cesium.Cartesian2(0, -32),
+                disableDepthTestDistance: Number.POSITIVE_INFINITY,
+                translucencyByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1e8, 0.3)
+            }
+        });
+        o.satEntity = satEntity;
+    });
+
+    // ── Animation tick ────────────────────────────────────────────────────────────
+    let tick = 0;
+    globeViewer.scene.preRender.addEventListener(() => {
+        tick += 0.0015;   // slow GEO drift
+
+        orbits.forEach(o => {
+            const angle  = tick + o.offset;
+            const satLat = 20.0  + Math.sin(angle) * o.latAmp;
+            const satLng = 79.74 + Math.cos(angle) * o.lngAmp;
+            const satPos = Cesium.Cartesian3.fromDegrees(satLng, satLat, o.alt);
+
+            o.satEntity.position  = satPos;
+
+            // Beam midpoint
+            const beamLat = satLat / 2;
+            const beamLng = satLng;
+            o.beamEntity.position = Cesium.Cartesian3.fromDegrees(beamLng, beamLat, o.alt / 2);
+        });
+    });
+}
+
+function setupGlobeCyclone() {
+    if (!globeViewer) return;
+
+    // Draw texture spiral
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    
+    function drawSpiral() {
+        ctx.clearRect(0, 0, 256, 256);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.shadowColor = '#00BCD4';
+        ctx.shadowBlur = 8;
+        ctx.lineWidth = 3.5;
+        
+        for (let arm = 0; arm < 4; arm++) {
+            ctx.beginPath();
+            const startAngle = (arm * Math.PI) / 2;
+            for (let theta = 0; theta < Math.PI * 2.2; theta += 0.1) {
+                const r = theta * 16;
+                const angle = startAngle + theta;
+                const x = 128 + r * Math.cos(angle);
+                const y = 128 + r * Math.sin(angle);
+                if (theta === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+        
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(13, 27, 42, 0.9)';
+        ctx.beginPath();
+        ctx.arc(128, 128, 18, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    
+    drawSpiral();
+
+    globeCycloneEntity = globeViewer.entities.add({
+        name: 'Bay of Bengal Cyclone Anomaly',
+        position: Cesium.Cartesian3.fromDegrees(84.50, 15.50, 2000),
+        billboard: {
+            image: canvas,
+            width: 480000,
+            height: 480000,
+            rotation: 0.0
+        }
+    });
+
+    globeViewer.scene.preRender.addEventListener(function() {
+        if (globeCycloneEntity && globeCycloneEntity.billboard) {
+            globeCycloneEntity.billboard.rotation += 0.006;
+        }
+    });
+}
+
+function setupGlobeInteraction() {
+    if (!globeViewer) return;
+    const handler = new Cesium.ScreenSpaceEventHandler(globeViewer.scene.canvas);
+    
+    let previousPickedEntity = null;
+    
+    // Hover
+    handler.setInputAction(function(movement) {
+        const pickedObject = globeViewer.scene.pick(movement.endPosition);
+        if (previousPickedEntity && previousPickedEntity.polygon) {
+            previousPickedEntity.polygon.outlineColor = Cesium.Color.fromCssColorString('#26C6DA').withAlpha(0.6);
+            previousPickedEntity.polygon.outlineWidth = 2;
+        }
+        
+        if (Cesium.defined(pickedObject) && pickedObject.id && pickedObject.id.polygon) {
+            const entity = pickedObject.id;
+            entity.polygon.outlineColor = Cesium.Color.WHITE;
+            entity.polygon.outlineWidth = 3;
+            previousPickedEntity = entity;
+            
+            const name = entity.properties.district_name || entity.properties.NAME_2 || entity.name;
+            document.getElementById("sat-region-name").innerText = name;
+        }
+    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
+
+    // Click
+    handler.setInputAction(function(click) {
+        const pickedObject = globeViewer.scene.pick(click.position);
+        if (Cesium.defined(pickedObject) && pickedObject.id) {
+            const entity = pickedObject.id;
+            const name = entity.properties.district_name || entity.properties.NAME_2 || entity.name;
+            handleDistrictClick(name);
+        }
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+}
+
+function handleDistrictClick(districtName) {
+    const station = DISTRICT_STATIONS.find(s => s.name.toLowerCase() === districtName.toLowerCase());
+    if (station) {
+        AppState.selectedDistrict = station.name;
+        AppState.selectedLat = station.coords[0];
+        AppState.selectedLng = station.coords[1];
+        
+        document.getElementById("sat-region-name").innerText = station.name;
+        document.getElementById("sat-region-coords").innerText = `${station.coords[0].toFixed(2)}° N, ${station.coords[1].toFixed(2)}° E`;
+        document.getElementById("location-indicator").innerText = station.name;
+        
+        syncSatClimateCards(station);
+    }
+}
+
+function colorGlobeDistricts() {
+    if (!globeDistrictsDataSource) return;
+    const entities = globeDistrictsDataSource.entities.values;
+
+    entities.forEach(entity => {
+        const name = entity.properties.district_name || entity.properties.NAME_2 || entity.name;
+        const station = DISTRICT_STATIONS.find(s => s.name.toLowerCase() === name.toLowerCase());
+        
+        let color = Cesium.Color.fromCssColorString('#00BCD4').withAlpha(0.08);
+        
+        if (station) {
+            if (AppState.activeLayers.temperature) {
+                color = getCesiumColorForVal(station.temp, TEMP_COLOR_STOPS);
+            } else if (AppState.activeLayers.rainfall) {
+                color = getCesiumColorForVal(station.rain, RAIN_COLOR_STOPS);
+            } else if (AppState.activeLayers.humidity) {
+                color = getCesiumColorForVal(station.humidity, HUMIDITY_COLOR_STOPS);
+            } else if (AppState.activeLayers.wind) {
+                color = getCesiumColorForVal(station.wind, WIND_COLOR_STOPS);
+            } else if (AppState.activeLayers.pressure) {
+                color = getCesiumColorForVal(station.pressure, PRESSURE_COLOR_STOPS);
+            }
+        }
+        
+        entity.polygon.material = color;
+    });
+}
+
+function getCesiumColorForVal(val, stops) {
+    if (!stops || stops.length === 0) return Cesium.Color.WHITE.withAlpha(0.1);
+    let low = stops[0];
+    let high = stops[stops.length - 1];
+    
+    if (val <= low.val) return Cesium.Color.fromBytes(low.r, low.g, low.b, low.a);
+    if (val >= high.val) return Cesium.Color.fromBytes(high.r, high.g, high.b, high.a);
+    
+    for (let i = 0; i < stops.length - 1; i++) {
+        if (val >= stops[i].val && val <= stops[i+1].val) {
+            low = stops[i];
+            high = stops[i+1];
+            break;
+        }
+    }
+    
+    const ratio = (val - low.val) / (high.val - low.val);
+    const r = Math.round(low.r + ratio * (high.r - low.r));
+    const g = Math.round(low.g + ratio * (high.g - low.g));
+    const b = Math.round(low.b + ratio * (high.b - low.b));
+    const a = Math.round(low.a + ratio * (high.a - low.a));
+    return Cesium.Color.fromBytes(r, g, b, a);
+}
+
+function setupGlobeControls() {
+    if (!globeViewer) return;
+
+    // Reset View
+    document.getElementById("sat-ctrl-reset")?.addEventListener("click", () => {
+        flyToIndia(true);
+    });
+
+    // Zoom In
+    document.getElementById("sat-ctrl-zoomin")?.addEventListener("click", () => {
+        const camera = globeViewer.camera;
+        const currentAlt = camera.positionCartographic.height;
+        camera.flyTo({
+            destination: Cesium.Cartesian3.fromRadians(
+                camera.positionCartographic.longitude,
+                camera.positionCartographic.latitude,
+                currentAlt * 0.6
+            ),
+            duration: 0.8
+        });
+    });
+
+    // Zoom Out
+    document.getElementById("sat-ctrl-zoomout")?.addEventListener("click", () => {
+        const camera = globeViewer.camera;
+        const currentAlt = camera.positionCartographic.height;
+        camera.flyTo({
+            destination: Cesium.Cartesian3.fromRadians(
+                camera.positionCartographic.longitude,
+                camera.positionCartographic.latitude,
+                currentAlt * 1.6
+            ),
+            duration: 0.8
+        });
+    });
+
+    // Auto Rotate
+    document.getElementById("sat-ctrl-rotate")?.addEventListener("click", () => {
+        AppState.globeAutoRotate = !AppState.globeAutoRotate;
+        const btn = document.getElementById("sat-ctrl-rotate");
+        if (AppState.globeAutoRotate) {
+            btn.classList.add("bg-cyan-500/20", "border-cyan-500/50", "text-cyan-400");
+            startGlobeAutoRotate();
+        } else {
+            btn.classList.remove("bg-cyan-500/20", "border-cyan-500/50", "text-cyan-400");
+            stopGlobeAutoRotate();
+        }
+    });
+
+    // Timeline Slider
+    document.getElementById("sat-timeline-range")?.addEventListener("input", (e) => {
+        const hour = parseInt(e.target.value);
+        AppState.timeHour = hour;
+        
+        // Sync Leaflet timeline hour
+        const leafletHourEl = document.querySelector(`.timeline-hour-dot[data-hour="${hour}"]`);
+        if (leafletHourEl) leafletHourEl.click();
+        
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Playback buttons
+    document.getElementById("sat-pb-play")?.addEventListener("click", () => {
+        document.getElementById("sat-pb-play").classList.add("hidden");
+        document.getElementById("sat-pb-pause").classList.remove("hidden");
+        startSatPlayback();
+    });
+
+    document.getElementById("sat-pb-pause")?.addEventListener("click", () => {
+        document.getElementById("sat-pb-play").classList.remove("hidden");
+        document.getElementById("sat-pb-pause").classList.add("hidden");
+        pauseSatPlayback();
+    });
+
+    // Layer switches
+    const layers = ['clouds', 'rainfall', 'temperature', 'wind', 'pressure', 'humidity', 'lst', 'sst'];
+    layers.forEach(l => {
+        document.getElementById(`sat-layer-${l}`)?.addEventListener("change", (e) => {
+            if (e.target.checked && l !== 'clouds') {
+                layers.forEach(other => {
+                    if (other !== 'clouds' && other !== l) {
+                        const check = document.getElementById(`sat-layer-${other}`);
+                        if (check) check.checked = false;
+                        AppState.activeLayers[other] = false;
+                    }
+                });
+            }
+            AppState.activeLayers[l === 'clouds' ? 'satellite' : l] = e.target.checked;
+            colorGlobeDistricts();
+        });
+    });
+
+    // Mode buttons
+    document.querySelectorAll(".sat-mode-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".sat-mode-btn").forEach(b => {
+                b.classList.remove("bg-cyan-500", "text-navy-950", "font-bold");
+                b.classList.add("text-slate-400");
+            });
+            btn.classList.add("bg-cyan-500", "text-navy-950", "font-bold");
+            btn.classList.remove("text-slate-400");
+
+            const mode = btn.id.replace("sat-mode-", "");
+            const btnEl = document.getElementById(`mode-${mode}`);
+            if (btnEl) {
+                btnEl.click();
+            } else {
+                AppState.timeMode = mode;
+                updateTimeNavigationState();
+            }
+        });
+    });
+
+    // Speed buttons
+    document.querySelectorAll(".sat-speed-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            document.querySelectorAll(".sat-speed-btn").forEach(b => {
+                b.classList.remove("bg-slate-800", "text-cyan-400");
+                b.classList.add("bg-navy-950", "text-slate-400", "hover:text-white");
+            });
+            btn.classList.add("bg-slate-800", "text-cyan-400");
+            btn.classList.remove("bg-navy-950", "text-slate-400");
+            
+            satPlaybackSpeed = parseInt(btn.id.replace("sat-speed-", ""));
+            if (satPlaybackInterval) {
+                startSatPlayback();
+            }
+        });
+    });
+}
+
+function startGlobeAutoRotate() {
+    if (!globeViewer || globeAutoRotateListener) return;
+    globeAutoRotateListener = function() {
+        if (AppState.globeAutoRotate) {
+            globeViewer.camera.rotate(Cesium.Cartesian3.UNIT_Z, 0.001);
+        }
+    };
+    globeViewer.scene.preRender.addEventListener(globeAutoRotateListener);
+}
+
+function stopGlobeAutoRotate() {
+    if (!globeViewer || !globeAutoRotateListener) return;
+    globeViewer.scene.preRender.removeEventListener(globeAutoRotateListener);
+    globeAutoRotateListener = null;
+}
+
+function syncSatClimateCards(station) {
+    if (!station) return;
+    
+    document.getElementById("sat-card-temp").innerText = `${station.temp.toFixed(1)}°C`;
+    document.getElementById("sat-card-rain").innerText = `${station.rain.toFixed(1)} mm`;
+    document.getElementById("sat-card-humidity").innerText = `${station.humidity}%`;
+    document.getElementById("sat-card-wind").innerText = `${station.wind} km/h`;
+    document.getElementById("sat-card-pressure").innerText = `${station.pressure} hPa`;
+    
+    const lst = station.temp + 5.2;
+    document.getElementById("sat-card-lst").innerText = `${lst.toFixed(1)}°C`;
+    const sst = station.temp - 4.1;
+    document.getElementById("sat-card-sst").innerText = `${sst.toFixed(1)}°C`;
+}
+
+function startSatPlayback() {
+    if (satPlaybackInterval) clearInterval(satPlaybackInterval);
+    const speedMap = { 1: 1500, 2: 800, 5: 300 };
+    const delay = speedMap[satPlaybackSpeed] || 1500;
+    
+    satPlaybackInterval = setInterval(() => {
+        const slider = document.getElementById("sat-timeline-range");
+        if (slider) {
+            let nextVal = parseInt(slider.value) + 1;
+            if (nextVal > 23) nextVal = 0;
+            slider.value = nextVal;
+            slider.dispatchEvent(new Event('input'));
+        }
+    }, delay);
+}
+
+function pauseSatPlayback() {
+    if (satPlaybackInterval) {
+        clearInterval(satPlaybackInterval);
+        satPlaybackInterval = null;
+    }
+}
+
+async function refreshSatData() {
+    const lat = AppState.selectedLat || 15.9129;
+    const lng = AppState.selectedLng || 79.7400;
+    const dateStr = `${AppState.timeYear}-${String(AppState.timeMonth).padStart(2, '0')}-${String(AppState.timeDay).padStart(2, '0')}`;
+    
+    try {
+        const resp = await fetch(`/api/playback/?lat=${lat}&lng=${lng}&date=${dateStr}&hour=${AppState.timeHour}`);
+        const data = await resp.json();
+        
+        if (data.observation || data.prediction) {
+            const state = data.observation || data.prediction;
+            document.getElementById("sat-card-temp").innerText = `${state.temperature.toFixed(1)}°C`;
+            document.getElementById("sat-card-rain").innerText = `${state.rainfall.toFixed(1)} mm`;
+            document.getElementById("sat-card-humidity").innerText = `${state.humidity}%`;
+            document.getElementById("sat-card-wind").innerText = `${state.wind} km/h`;
+            document.getElementById("sat-card-pressure").innerText = `${state.pressure} hPa`;
+            document.getElementById("sat-card-lst").innerText = `${(state.lst || (state.temperature + 5.2)).toFixed(1)}°C`;
+            document.getElementById("sat-card-sst").innerText = `${(state.sst || (state.temperature - 4.1)).toFixed(1)}°C`;
+        }
+    } catch (e) {
+        console.warn('[R.O.O.K] Failed to fetch playback data for 3D globe:', e);
+    }
+}
+
+function updateSatTimelineText() {
+    const formattedHour = String(AppState.timeHour).padStart(2, '0') + ':00 IST';
+    const months = ['JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const dateText = `${AppState.timeDay} ${months[AppState.timeMonth - 1] || 'JUN'} ${AppState.timeYear} | ${formattedHour}`;
+    const txtEl = document.getElementById("sat-pb-time-text");
+    if (txtEl) txtEl.innerText = dateText;
 }

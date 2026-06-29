@@ -528,27 +528,86 @@ class SimulateView(APIView):
         lng = float(body.get('lng', 79.7400))
         temp_delta = float(body.get('temp_delta', body.get('temp_change', 0.0)))
         rain_delta = float(body.get('rain_delta', body.get('rainfall_change', 0.0)))
-        hum_delta = float(body.get('humidity_change', 0.0))
+        hum_delta = float(body.get('humidity_change', body.get('humidity_delta', 0.0)))
+        wind_delta = float(body.get('wind_change', body.get('wind_delta', 0.0)))
+        press_delta = float(body.get('pressure_change', body.get('pressure_delta', 0.0)))
+        lst_delta = float(body.get('lst_change', body.get('lst_delta', 0.0)))
+        sst_delta = float(body.get('sst_change', body.get('sst_delta', 0.0)))
+        cloud_delta = float(body.get('cloud_change', body.get('cloud_cover_change', 0.0)))
         scenario_cat = body.get('scenario_category', 'Custom')
 
-        # Load prediction base
-        base_pred = PredictionEngine._get_forecast_point(lat, lng, datetime.date.today(), "1-day")
+        date_str = body.get('date')
+        if date_str:
+            try:
+                target_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+            except Exception:
+                target_date = datetime.date.today()
+        else:
+            target_date = datetime.date.today()
+
+        # Resolve district for DB matching
+        districts = District.objects.all()
+        district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng)) if districts.exists() else None
+
+        base_state = None
+        if district:
+            # Check for live/historical observation first
+            obs_qs = ClimateObservation.objects.filter(date=target_date, district=district)
+            if obs_qs.exists():
+                obs = obs_qs.first()
+                base_state = {
+                    "temperature": obs.temperature,
+                    "rainfall": obs.rainfall,
+                    "humidity": obs.humidity,
+                    "wind": obs.wind,
+                    "pressure": obs.pressure,
+                    "lst": obs.lst,
+                    "sst": obs.sst or 0.0
+                }
+            else:
+                # Check for prediction in DB second
+                pred_qs = ClimatePrediction.objects.filter(date=target_date, district=district)
+                if pred_qs.exists():
+                    pred = pred_qs.first()
+                    base_state = {
+                        "temperature": pred.temperature,
+                        "rainfall": pred.rainfall,
+                        "humidity": pred.humidity,
+                        "wind": pred.wind,
+                        "pressure": pred.pressure,
+                        "lst": pred.lst,
+                        "sst": pred.sst or 0.0
+                    }
+
+        if not base_state:
+            # Generate predictive data dynamically using the predictive engine/models output
+            pred_data = PredictionEngine._get_forecast_point(lat, lng, target_date, "1-day")
+            base_state = {
+                "temperature": pred_data["temperature"],
+                "rainfall": pred_data["rainfall"],
+                "humidity": pred_data["humidity"],
+                "wind": pred_data["wind"],
+                "pressure": pred_data["pressure"],
+                "lst": pred_data["lst"],
+                "sst": pred_data["sst"] or 0.0
+            }
+
+        # Estimate cloud cover baseline
+        base_cloud = round(min(100.0, max(10.0, base_state["humidity"] * 1.1 - 20.0)), 1)
+        base_state["cloud_cover"] = base_cloud
 
         # Run scenario engine modifications
         deltas = {
             "temp_change": temp_delta,
             "rainfall_change": rain_delta,
-            "humidity_change": hum_delta
+            "humidity_change": hum_delta,
+            "wind_change": wind_delta,
+            "pressure_change": press_delta,
+            "lst_change": lst_delta,
+            "sst_change": sst_delta
         }
-        modified = ScenarioEngine.simulate_scenario({
-            "temperature": base_pred["temperature"],
-            "rainfall": base_pred["rainfall"],
-            "humidity": base_pred["humidity"],
-            "wind": base_pred["wind"],
-            "pressure": base_pred["pressure"],
-            "lst": base_pred["lst"],
-            "sst": base_pred["sst"]
-        }, scenario_cat, deltas)
+        modified = ScenarioEngine.simulate_scenario(base_state, scenario_cat, deltas)
+        modified["cloud_cover"] = round(min(100.0, max(0.0, base_cloud + cloud_delta)), 1)
 
         # Run risk assessment
         risks = AnalyticsRiskEngine.calculate_risks(modified)
@@ -558,7 +617,11 @@ class SimulateView(APIView):
             scenario_category=scenario_cat,
             temp_change=temp_delta,
             rainfall_change=rain_delta,
-            humidity_change=hum_delta
+            humidity_change=hum_delta,
+            wind_change=wind_delta,
+            pressure_change=press_delta,
+            sst_change=sst_delta,
+            lst_change=lst_delta
         )
         RiskAssessment.objects.create(
             simulation=sim_record,
@@ -572,20 +635,112 @@ class SimulateView(APIView):
             attribution_insights=risks["attribution_insights"]
         )
 
+        # Construct causal reasoning chain
+        reasoning = []
+        if temp_delta != 0:
+            reasoning.append({
+                "label": "Thermal Deviation",
+                "value": f"{temp_delta:+}°C",
+                "effect": "Temperature perturbation applied"
+            })
+        if hum_delta != 0:
+            reasoning.append({
+                "label": "Humidity Anomaly",
+                "value": f"{hum_delta:+}%",
+                "effect": "Alters atmospheric moisture saturation"
+            })
+        if rain_delta != 0:
+            reasoning.append({
+                "label": "Rainfall Variance",
+                "value": f"{rain_delta:+}%",
+                "effect": "Drives soil moisture and flood accumulation"
+            })
+        if wind_delta != 0:
+            reasoning.append({
+                "label": "Wind Speed Shift",
+                "value": f"{wind_delta:+} kt",
+                "effect": "Modifies wind vector velocity"
+            })
+        if press_delta != 0:
+            reasoning.append({
+                "label": "Pressure Delta",
+                "value": f"{press_delta:+} hPa",
+                "effect": "Affects cyclonic circulation intensity"
+            })
+        if lst_delta != 0:
+            reasoning.append({
+                "label": "LST Deviation",
+                "value": f"{lst_delta:+}°C",
+                "effect": "Influences surface heat emission"
+            })
+        if sst_delta != 0:
+            reasoning.append({
+                "label": "SST Deviation",
+                "value": f"{sst_delta:+}°C",
+                "effect": "Affects ocean-atmosphere heat exchange"
+            })
+
+        if temp_delta > 0 and hum_delta < 0:
+            reasoning.append({
+                "label": "Evapotranspiration Rate",
+                "value": "Accelerated (↑)",
+                "effect": "Higher temperatures and dry air increase water loss"
+            })
+        if rain_delta < 0:
+            reasoning.append({
+                "label": "Soil Moisture State",
+                "value": "Deficit (↓)",
+                "effect": "Decreased precipitation limits groundwater recharge"
+            })
+        elif rain_delta > 30:
+            reasoning.append({
+                "label": "Surface Runoff Volume",
+                "value": "Excess (↑)",
+                "effect": "Heavy rainfall exceeds soil absorption capacity"
+            })
+
+        highest_risk_label = "Low"
+        highest_risk_name = "System Stability"
+        for r_name, r_val in [("Drought", risks["drought_risk"]), ("Flood", risks["flood_risk"]), ("Heatwave", risks["heatwave_risk"]), ("Cyclone", risks["cyclone_risk"])]:
+            if r_val in ["High", "Critical"]:
+                highest_risk_label = r_val
+                highest_risk_name = f"{r_name} Hazard"
+                break
+            elif r_val == "Medium":
+                highest_risk_label = "Medium"
+                highest_risk_name = f"{r_name} Hazard"
+
+        reasoning.append({
+            "label": f"Resulting {highest_risk_name}",
+            "value": highest_risk_label.upper(),
+            "effect": "Derived from Digital Twin risk assessment matrix"
+        })
+
+        contribs = [
+            {"name": "Temperature", "value": risks["attribution_insights"]["temperature_contribution"]},
+            {"name": "Rainfall", "value": risks["attribution_insights"]["rainfall_contribution"]},
+            {"name": "Humidity", "value": risks["attribution_insights"]["humidity_contribution"]},
+            {"name": "Sea Surface Temp", "value": risks["attribution_insights"]["sst_influence"]},
+        ]
+        contribs.sort(key=lambda x: x["value"], reverse=True)
+
         agri_map = {'Low': 'Optimal Yield Output', 'Medium': 'Moderate Stress', 'High': 'Critical Yield Loss', 'Critical': 'Severe Crop Wilting / Stress'}
 
         return Response({
-            'rainfall_mm': modified["rainfall"],
-            'tmax_c': modified["temperature"],
-            'tmin_c': round(modified["temperature"] - 5.5, 1),
+            'baseline': base_state,
+            'simulated': modified,
             'risk': {
                 'drought': risks["drought_risk"],
                 'flood': risks["flood_risk"],
                 'heatwave': risks["heatwave_risk"],
+                'cyclone': risks["cyclone_risk"],
                 'agri': risks["agriculture_risk"]
             },
             'source': 'xgboost_simulation' if ModelService.get_instance().is_ready else 'idw_simulation',
             # Legacy format compat keys
+            'rainfall_mm': modified["rainfall"],
+            'tmax_c': modified["temperature"],
+            'tmin_c': round(modified["temperature"] - 5.5, 1),
             'drought_risk': risks["drought_risk"],
             'flood_risk': risks["flood_risk"],
             'heatwave_risk': risks["heatwave_risk"],
@@ -593,6 +748,8 @@ class SimulateView(APIView):
             'water_stress_index': risks["water_stress"],
             'crop_stress_index': risks["crop_stress"],
             'attribution_insights': risks["attribution_insights"],
+            'reasoning_chain': reasoning,
+            'influential_variables': contribs,
             'timestamp': datetime.datetime.utcnow().isoformat()
         })
 

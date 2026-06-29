@@ -990,5 +990,16 @@ select option {
     color: #0f172a !important; /* slate-900 */
 }
 
+/* Space globe container - solid black while Cesium loads its own star field */
+#satellite-globe-container {
+    background-color: #000205 !important;
+}
+
+#cesiumContainer,
+#cesiumContainer canvas {
+    width:  100% !important;
+    height: 100% !important;
+}
+
 
 
