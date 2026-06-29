@@ -69,11 +69,11 @@ const AP_ZOOM = 7;
 
 // Fallback Andhra Pradesh boundary polygon coordinates for premium highlight if GeoJSON fails
 const AP_BOUNDARY_COORDS = [
-    [13.5, 80.0], [13.4, 79.2], [13.7, 78.5], [14.0, 78.0], 
-    [13.8, 77.0], [14.5, 76.8], [15.2, 77.2], [15.8, 77.0], 
-    [16.2, 78.0], [16.0, 79.0], [16.8, 79.8], [17.2, 80.8], 
-    [17.5, 81.3], [18.2, 82.5], [18.8, 83.5], [19.1, 84.6], 
-    [18.5, 84.3], [17.5, 82.5], [16.5, 81.5], [16.0, 80.5], 
+    [13.5, 80.0], [13.4, 79.2], [13.7, 78.5], [14.0, 78.0],
+    [13.8, 77.0], [14.5, 76.8], [15.2, 77.2], [15.8, 77.0],
+    [16.2, 78.0], [16.0, 79.0], [16.8, 79.8], [17.2, 80.8],
+    [17.5, 81.3], [18.2, 82.5], [18.8, 83.5], [19.1, 84.6],
+    [18.5, 84.3], [17.5, 82.5], [16.5, 81.5], [16.0, 80.5],
     [15.2, 80.1], [14.0, 80.1]
 ];
 
@@ -97,48 +97,48 @@ const DISTRICT_STATIONS = [
 // ─── Windy-Style Smooth Color Gradient Stops (each parameter) ────────────────
 // Format: { val: threshold, r, g, b, a (0-255 alpha) }
 const TEMP_COLOR_STOPS = [
-    { val: 14, r: 30,  g: 60,  b: 255, a: 200 },  // Cool blue
-    { val: 20, r: 0,   g: 140, b: 220, a: 192 },  // Cyan-blue
-    { val: 25, r: 0,   g: 200, b: 100, a: 185 },  // Green
-    { val: 29, r: 160, g: 220, b: 0,   a: 185 },  // Yellow-green
-    { val: 32, r: 255, g: 200, b: 0,   a: 185 },  // Yellow
-    { val: 34, r: 255, g: 100, b: 0,   a: 190 },  // Orange
-    { val: 36, r: 220, g: 20,  b: 0,   a: 195 },  // Hot red
-    { val: 40, r: 180, g: 0,   b: 80,  a: 200 },  // Crimson
+    { val: 14, r: 30, g: 60, b: 255, a: 200 },  // Cool blue
+    { val: 20, r: 0, g: 140, b: 220, a: 192 },  // Cyan-blue
+    { val: 25, r: 0, g: 200, b: 100, a: 185 },  // Green
+    { val: 29, r: 160, g: 220, b: 0, a: 185 },  // Yellow-green
+    { val: 32, r: 255, g: 200, b: 0, a: 185 },  // Yellow
+    { val: 34, r: 255, g: 100, b: 0, a: 190 },  // Orange
+    { val: 36, r: 220, g: 20, b: 0, a: 195 },  // Hot red
+    { val: 40, r: 180, g: 0, b: 80, a: 200 },  // Crimson
 ];
 
 const RAIN_COLOR_STOPS = [
-    { val: 0,  r: 180, g: 200, b: 240, a: 12  },  // Dry - near transparent
-    { val: 1,  r: 120, g: 180, b: 255, a: 65  },  // Trace - light blue
-    { val: 5,  r: 50,  g: 120, b: 255, a: 135 },  // Light - blue
-    { val: 15, r: 70,  g: 40,  b: 220, a: 172 },  // Moderate - indigo
-    { val: 25, r: 130, g: 0,   b: 200, a: 195 },  // Heavy - violet
-    { val: 40, r: 80,  g: 0,   b: 140, a: 215 },  // Extreme - deep purple
+    { val: 0, r: 180, g: 200, b: 240, a: 12 },  // Dry - near transparent
+    { val: 1, r: 120, g: 180, b: 255, a: 65 },  // Trace - light blue
+    { val: 5, r: 50, g: 120, b: 255, a: 135 },  // Light - blue
+    { val: 15, r: 70, g: 40, b: 220, a: 172 },  // Moderate - indigo
+    { val: 25, r: 130, g: 0, b: 200, a: 195 },  // Heavy - violet
+    { val: 40, r: 80, g: 0, b: 140, a: 215 },  // Extreme - deep purple
 ];
 
 const WIND_COLOR_STOPS = [
-    { val: 0,  r: 80,  g: 200, b: 120, a: 140 },  // Calm - green
-    { val: 8,  r: 0,   g: 200, b: 220, a: 155 },  // Light - cyan
-    { val: 16, r: 200, g: 220, b: 0,   a: 172 },  // Moderate - yellow
-    { val: 22, r: 255, g: 140, b: 0,   a: 188 },  // Fresh - orange
-    { val: 28, r: 220, g: 30,  b: 0,   a: 200 },  // Strong - red
-    { val: 40, r: 160, g: 0,   b: 120, a: 215 },  // Gale - magenta
+    { val: 0, r: 80, g: 200, b: 120, a: 140 },  // Calm - green
+    { val: 8, r: 0, g: 200, b: 220, a: 155 },  // Light - cyan
+    { val: 16, r: 200, g: 220, b: 0, a: 172 },  // Moderate - yellow
+    { val: 22, r: 255, g: 140, b: 0, a: 188 },  // Fresh - orange
+    { val: 28, r: 220, g: 30, b: 0, a: 200 },  // Strong - red
+    { val: 40, r: 160, g: 0, b: 120, a: 215 },  // Gale - magenta
 ];
 
 const PRESSURE_COLOR_STOPS = [
-    { val: 1002, r: 60,  g: 100, b: 255, a: 172 },  // Very low - blue
-    { val: 1006, r: 0,   g: 200, b: 200, a: 160 },  // Low - teal
-    { val: 1008, r: 100, g: 220, b: 80,  a: 150 },  // Normal - green
-    { val: 1012, r: 240, g: 200, b: 0,   a: 160 },  // Normal-high - yellow
-    { val: 1016, r: 220, g: 80,  b: 0,   a: 172 },  // High - orange-red
+    { val: 1002, r: 60, g: 100, b: 255, a: 172 },  // Very low - blue
+    { val: 1006, r: 0, g: 200, b: 200, a: 160 },  // Low - teal
+    { val: 1008, r: 100, g: 220, b: 80, a: 150 },  // Normal - green
+    { val: 1012, r: 240, g: 200, b: 0, a: 160 },  // Normal-high - yellow
+    { val: 1016, r: 220, g: 80, b: 0, a: 172 },  // High - orange-red
 ];
 
 const HUMIDITY_COLOR_STOPS = [
-    { val: 40,  r: 220, g: 170, b: 40,  a: 140 },  // Dry - amber
-    { val: 58,  r: 100, g: 200, b: 80,  a: 155 },  // Moderate - green
-    { val: 72,  r: 0,   g: 190, b: 160, a: 170 },  // Humid - teal
-    { val: 85,  r: 0,   g: 100, b: 220, a: 185 },  // Very humid - blue
-    { val: 100, r: 60,  g: 30,  b: 200, a: 200 },  // Saturated - indigo
+    { val: 40, r: 220, g: 170, b: 40, a: 140 },  // Dry - amber
+    { val: 58, r: 100, g: 200, b: 80, a: 155 },  // Moderate - green
+    { val: 72, r: 0, g: 190, b: 160, a: 170 },  // Humid - teal
+    { val: 85, r: 0, g: 100, b: 220, a: 185 },  // Very humid - blue
+    { val: 100, r: 60, g: 30, b: 200, a: 200 },  // Saturated - indigo
 ];
 
 
@@ -223,7 +223,7 @@ function initMap() {
     AppState.map.on('click', async (e) => {
         const lat = e.latlng.lat;
         const lng = e.latlng.lng;
-        
+
         // Draw clicked marker immediately (no delay)
         if (AppState.clickedMarker) AppState.map.removeLayer(AppState.clickedMarker);
         const clickIcon = L.divIcon({
@@ -256,13 +256,13 @@ function initMap() {
 
     // ── queryLocation: calls /api/predict/ and updates the sidebar ────────────
     // ── queryLocation: calls /api/predict/ and updates the sidebar ────────────
-    window.queryLocation = async function(lat, lng) {   
-        const nameEl     = document.getElementById("clicked-area-name");
-        const tempEl     = document.getElementById("clicked-temp");
-        const rainEl     = document.getElementById("clicked-rain");
-        const windElLoc  = document.getElementById("clicked-wind");
+    window.queryLocation = async function (lat, lng) {
+        const nameEl = document.getElementById("clicked-area-name");
+        const tempEl = document.getElementById("clicked-temp");
+        const rainEl = document.getElementById("clicked-rain");
+        const windElLoc = document.getElementById("clicked-wind");
         const pressureEl = document.getElementById("clicked-pressure");
-        const badge      = document.getElementById('model-source-badge');
+        const badge = document.getElementById('model-source-badge');
 
         // PROPERLY DEFINE nearSt SO IT DOESN'T CRASH
         let nearSt = DISTRICT_STATIONS[0];
@@ -298,24 +298,24 @@ function initMap() {
             try {
                 // Fetch real live data for the clicked coordinates
                 const resp = await fetch(`/api/weather/?lat=${lat}&lng=${lng}`);
-                
+
                 // If backend throws a 404/500, jump to the catch block
-                if (!resp.ok) throw new Error("API Route failed"); 
-                
+                if (!resp.ok) throw new Error("API Route failed");
+
                 const data = await resp.json();
 
                 // Update Sidebar Query Info
-                if (tempEl)     tempEl.innerText = `${data.current.temperature} °C`;
-                if (rainEl)     rainEl.innerText = `${data.current.rainfall} mm`;
+                if (tempEl) tempEl.innerText = `${data.current.temperature} °C`;
+                if (rainEl) rainEl.innerText = `${data.current.rainfall} mm`;
                 if (pressureEl) pressureEl.innerText = `${nearSt.pressure} hPa`; // fallback if pressure isn't in API
-                if (windElLoc)  windElLoc.innerText = `${data.current.wind_speed} kmph ${data.current.wind_direction}`;
+                if (windElLoc) windElLoc.innerText = `${data.current.wind_speed} kmph ${data.current.wind_direction}`;
 
                 // Update the Dashboard KPI Cards
                 animateValue('kpi-temp', data.current.temperature, ' °C');
                 animateValue('kpi-rain', data.current.rainfall, ' mm');
                 animateValue('kpi-humidity', data.current.humidity, '%');
                 animateValue('kpi-wind', data.current.wind_speed, ' kmph');
-                
+
                 const dirEl = document.getElementById('kpi-wind-dir');
                 if (dirEl) dirEl.innerText = data.current.wind_direction;
 
@@ -338,17 +338,17 @@ function initMap() {
             const data = await resp.json();
             //data.wind_speed = Math.round(data.wind_speed * 3.6);
             // UPDATE UI WITH AI DATA
-            if (tempEl)     tempEl.innerText = `${data.tmax_c} °C`;
-            if (rainEl)     rainEl.innerText = `${data.rainfall_mm} mm`;
+            if (tempEl) tempEl.innerText = `${data.tmax_c} °C`;
+            if (rainEl) rainEl.innerText = `${data.rainfall_mm} mm`;
             if (pressureEl) pressureEl.innerText = `${nearSt.pressure} hPa`;
-            if (windElLoc)  windElLoc.innerText = `${data.wind_speed} kmph ${nearSt.dir}`;
+            if (windElLoc) windElLoc.innerText = `${data.wind_speed} kmph ${nearSt.dir}`;
 
             // UPDATE KPIs
             animateValue('kpi-temp', data.tmax_c, ' °C');
             animateValue('kpi-rain', data.rainfall_mm, ' mm');
             animateValue('kpi-humidity', nearSt.humidity, '%');
             animateValue('kpi-wind', data.wind_speed, ' kmph');
-            
+
             const dirEl = document.getElementById('kpi-wind-dir');
             if (dirEl) dirEl.innerText = nearSt.dir;
 
@@ -392,13 +392,13 @@ function initMap() {
             const tempVal = parseFloat((28.5 + (Math.sin(lat * 12) * Math.cos(lng * 8) * 4.5)).toFixed(1));
             const rainVal = parseFloat(Math.max(0, (8.0 + (Math.cos(lat * 9) * Math.sin(lng * 12) * 12.0))).toFixed(1));
             const windVal = Math.max(2, Math.round(14 + (Math.sin(lat + lng) * 8)));
-            const windDirs = ['N','NE','E','SE','S','SW','W','NW'];
-            const windDir  = windDirs[Math.abs(Math.round(lat * 100 + lng * 100)) % windDirs.length];
+            const windDirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+            const windDir = windDirs[Math.abs(Math.round(lat * 100 + lng * 100)) % windDirs.length];
             const pressureVal = Math.round(1006 + (Math.cos(lat * 5 + lng * 5) * 4));
 
-            if (tempEl)     tempEl.innerText = `${tempVal} °C`;
-            if (rainEl)     rainEl.innerText = `${rainVal} mm`;
-            if (windElLoc)  windElLoc.innerText = `${windVal} kmph ${windDir}`;
+            if (tempEl) tempEl.innerText = `${tempVal} °C`;
+            if (rainEl) rainEl.innerText = `${rainVal} mm`;
+            if (windElLoc) windElLoc.innerText = `${windVal} kmph ${windDir}`;
             if (pressureEl) pressureEl.innerText = `${pressureVal} hPa`;
             animateValue('kpi-temp', tempVal, ' °C');
             animateValue('kpi-rain', rainVal, ' mm');
@@ -429,7 +429,7 @@ function initMap() {
                     className: 'ap-boundary-path' // CSS Animated Neon border glow
                 }
             }).addTo(AppState.map);
-            
+
             // Add prominent state label centered in the state, matching DT.png
             const stateLabelIcon = L.divIcon({
                 className: 'map-state-label text-center font-display font-bold text-white tracking-widest pointer-events-none select-none',
@@ -454,7 +454,7 @@ function initMap() {
                 dashArray: '6, 6',
                 className: 'ap-boundary-path'
             }).addTo(AppState.map);
-            
+
             const stateLabelIcon = L.divIcon({
                 className: 'map-state-label text-center font-display font-bold text-white tracking-widest pointer-events-none select-none',
                 html: 'ANDHRA PRADESH',
@@ -513,7 +513,7 @@ function selectDistrict(station) {
     console.log(`[R.O.O.K] District selected: ${station.name}`);
     AppState.selectedDistrict = station.name;
     document.getElementById("location-indicator").innerText = station.name;
-    
+
     // Update selected location query panel UI to loading state
     const nameEl = document.getElementById("clicked-area-name");
     const coordsEl = document.getElementById("clicked-coords");
@@ -521,11 +521,11 @@ function selectDistrict(station) {
     const rainEl = document.getElementById("clicked-rain");
     const windElLoc = document.getElementById("clicked-wind");
     const pressureEl = document.getElementById("clicked-pressure");
-    
+
     if (nameEl) nameEl.innerText = station.name;
     if (coordsEl) coordsEl.innerText = `${station.coords[0].toFixed(4)}° N, ${station.coords[1].toFixed(4)}° E`;
     if (tempEl) tempEl.innerText = `Fetching...`;
-    if (rainEl) rainEl.innerText = `Fetching...`;   
+    if (rainEl) rainEl.innerText = `Fetching...`;
     if (windElLoc) windElLoc.innerText = `Fetching AI...`; // FIXED! No undefined variables here!
     if (pressureEl) pressureEl.innerText = `${station.pressure} hPa`;
 
@@ -553,14 +553,14 @@ function selectDistrict(station) {
     if (kpiWindEl) kpiWindEl.innerText = "Loading...";
     const dirEl = document.getElementById("kpi-wind-dir");
     if (dirEl) dirEl.innerText = station.dir;
-    
+
     // Store location on district select so simulator can use it
     AppState.selectedLat = station.coords[0];
     AppState.selectedLng = station.coords[1];
 
     // Zoom map closer
     AppState.map.setView(station.coords, 10, { animate: true, duration: 1.5 });
-    
+
     // Query real prediction for this station
     queryLocation(station.coords[0], station.coords[1]);
 }
@@ -604,7 +604,7 @@ function initMapRight() {
     AppState.darkBaseLayerRight = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
         maxZoom: 19
     });
-    
+
     const satImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
         maxZoom: 19
     });
@@ -656,7 +656,7 @@ function animateValue(id, value, suffix) {
     const start = parseFloat(el.innerText) || 0;
     const duration = 0.5;
     const obj = { val: start };
-    
+
     gsap.to(obj, {
         val: value,
         duration: duration,
@@ -778,7 +778,7 @@ function setupEventListeners() {
                 });
                 AppState.activeLayers[layer] = !wasActive;
             }
-            
+
             syncLayerButtonsUI();
             updateMapLegend();
             updateMapLayers();
@@ -801,7 +801,7 @@ function setupEventListeners() {
                 if (key === 'temp') displayVal = (parseFloat(displayVal) > 0 ? '+' : '') + parseFloat(displayVal).toFixed(1) + '°C';
                 if (key === 'rain') displayVal = (parseInt(displayVal) > 0 ? '+' : '') + displayVal + '%';
                 if (key === 'humidity') displayVal = (parseInt(displayVal) > 0 ? '+' : '') + displayVal + '%';
-                
+
                 valIndicator.innerText = displayVal;
                 AppState.simulator[key] = parseFloat(e.target.value);
                 triggerSimulation();
@@ -871,7 +871,7 @@ function setupEventListeners() {
         if (container) {
             const isCollapsing = !container.classList.contains("sidebar-collapsed");
             container.classList.toggle("sidebar-collapsed");
-            
+
             // GSAP micro-animation for smooth slide effect
             gsap.to("#sidebar", {
                 width: isCollapsing ? 72 : 256,
@@ -931,7 +931,7 @@ function setupEventListeners() {
                 prognosisCollapsible.classList.remove("hidden");
                 prognosisCollapsible.style.maxHeight = "0px";
                 prognosisCollapsible.style.opacity = "0";
-                
+
                 gsap.to(prognosisCollapsible, {
                     maxHeight: "350px",
                     opacity: 1,
@@ -968,7 +968,7 @@ function setupEventListeners() {
     });
 
     // Global helper for search selection
-    window.handleSearchSelect = function(name) {
+    window.handleSearchSelect = function (name) {
         const station = DISTRICT_STATIONS.find(s => s.name === name);
         if (station) {
             selectDistrict(station);
@@ -1040,7 +1040,7 @@ function switchPanel(panelName) {
             dashboardWidgets.classList.add("hidden");
             dashboardWidgets.style.display = "none";
         }
-        
+
         // Show right panel container
         if (rightPanelContainer) {
             rightPanelContainer.classList.remove("hidden");
@@ -1084,7 +1084,7 @@ function switchPanel(panelName) {
             }, 100);
         }
     }
-    
+
     // Invalidate map sizes in case borders shifted
     setTimeout(() => {
         if (AppState.map) AppState.map.invalidateSize();
@@ -1097,7 +1097,7 @@ function setTimeline(step) {
     AppState.activeTimeline = step;
     const label = document.getElementById("timeline-step-label");
     const indicator = document.getElementById("timeline-indicator-text");
-    
+
     if (step === 'past') {
         label.innerText = "Historical Reanalysis (2020)";
         indicator.innerText = "HISTORICAL";
@@ -1146,7 +1146,7 @@ function fetchAlerts() {
             const container = document.getElementById("alerts-container");
             if (!container) return;
             container.innerHTML = "";
-            
+
             data.forEach(alert => {
                 let badgeClass = "badge-low";
                 if (alert.severity === "Critical") badgeClass = "badge-critical";
@@ -1182,31 +1182,31 @@ async function triggerSimulation() {
             body: JSON.stringify({
                 lat,
                 lng,
-                temp_delta:       AppState.simulator.temp,
-                rain_delta:       AppState.simulator.rain,
-                humidity_change:  AppState.simulator.humidity
+                temp_delta: AppState.simulator.temp,
+                rain_delta: AppState.simulator.rain,
+                humidity_change: AppState.simulator.humidity
             })
         });
         const data = await resp.json();
 
         // Update Simulator Dashboard
-        updateRiskBadge('risk-drought',  data.drought_risk || (data.risk || {}).drought || 'Low');
-        updateRiskBadge('risk-flood',    data.flood_risk   || (data.risk || {}).flood   || 'Low');
-        updateRiskBadge('risk-heatwave', data.heatwave_risk|| (data.risk || {}).heatwave|| 'Low');
-        
+        updateRiskBadge('risk-drought', data.drought_risk || (data.risk || {}).drought || 'Low');
+        updateRiskBadge('risk-flood', data.flood_risk || (data.risk || {}).flood || 'Low');
+        updateRiskBadge('risk-heatwave', data.heatwave_risk || (data.risk || {}).heatwave || 'Low');
+
         const agriEl = document.getElementById('risk-agri');
         if (agriEl) agriEl.innerText = data.agricultural_impact || 'Optimal Yield Output';
-        
+
         const waterEl = document.getElementById('risk-water');
         if (waterEl) waterEl.innerText = (data.water_stress_index || 45).toFixed(1) + '%';
-        
+
         const progressEl = document.getElementById('stress-progress');
         if (progressEl) progressEl.style.width = (data.water_stress_index || 45) + '%';
 
         // Modify map boundary style based on risk
         if (AppState.districtLayer) {
             const dr = data.drought_risk || (data.risk || {}).drought;
-            const fr = data.flood_risk   || (data.risk || {}).flood;
+            const fr = data.flood_risk || (data.risk || {}).flood;
             if (fr === 'High' || fr === 'Critical') {
                 AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#f87171', dashArray: '6, 6' });
             } else if (dr === 'High' || dr === 'Critical') {
@@ -1226,30 +1226,32 @@ async function triggerSimulation() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
             body: JSON.stringify({
-                temp_change:      AppState.simulator.temp,
-                rainfall_change:  AppState.simulator.rain,
-                humidity_change:  AppState.simulator.humidity
+                temp_change: AppState.simulator.temp,
+                rainfall_change: AppState.simulator.rain,
+                humidity_change: AppState.simulator.humidity
+
+                
             })
         })
-        .then(res => res.json())
-        .then(data => {
-            updateRiskBadge('risk-drought', data.drought_risk);
-            updateRiskBadge('risk-flood', data.flood_risk);
-            updateRiskBadge('risk-heatwave', data.heatwave_risk);
-            document.getElementById('risk-agri').innerText = data.agricultural_impact;
-            document.getElementById('risk-water').innerText = data.water_stress_index.toFixed(1) + '%';
-            document.getElementById('stress-progress').style.width = data.water_stress_index + '%';
-            if (AppState.districtLayer) {
-                if (data.flood_risk === 'Critical' || data.flood_risk === 'High') {
-                    AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#f87171', dashArray: '6, 6' });
-                } else if (data.drought_risk === 'Critical' || data.drought_risk === 'High') {
-                    AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#fb923c', dashArray: '6, 6' });
-                } else {
-                    AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#ffffff', dashArray: '6, 6' });
+            .then(res => res.json())
+            .then(data => {
+                updateRiskBadge('risk-drought', data.drought_risk);
+                updateRiskBadge('risk-flood', data.flood_risk);
+                updateRiskBadge('risk-heatwave', data.heatwave_risk);
+                document.getElementById('risk-agri').innerText = data.agricultural_impact;
+                document.getElementById('risk-water').innerText = data.water_stress_index.toFixed(1) + '%';
+                document.getElementById('stress-progress').style.width = data.water_stress_index + '%';
+                if (AppState.districtLayer) {
+                    if (data.flood_risk === 'Critical' || data.flood_risk === 'High') {
+                        AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#f87171', dashArray: '6, 6' });
+                    } else if (data.drought_risk === 'Critical' || data.drought_risk === 'High') {
+                        AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#fb923c', dashArray: '6, 6' });
+                    } else {
+                        AppState.districtLayer.setStyle({ fillColor: 'transparent', fillOpacity: 0, color: '#ffffff', dashArray: '6, 6' });
+                    }
                 }
-            }
-            updateMapLayers(true);
-        });
+                updateMapLayers(true);
+            });
     }
 }
 
@@ -1410,7 +1412,7 @@ function latLngToCanvasXY(lat, lng, W, H) {
 // Render Windy-style gradient canvas using IDW spatial interpolation and clipped to Andhra Pradesh boundary
 function renderWeatherCanvas(valueKey, colorStops, stations) {
     const W = 240, H = 180;  // High-fidelity rendering canvas
-    
+
     // Create temporary canvas to draw the raw IDW gradient
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = W;
@@ -1418,7 +1420,7 @@ function renderWeatherCanvas(valueKey, colorStops, stations) {
     const tempCtx = tempCanvas.getContext('2d');
     const imageData = tempCtx.createImageData(W, H);
     const data = imageData.data;
-    
+
     const LAT_MIN = 12.3, LAT_MAX = 19.6;
     const LNG_MIN = 76.5, LNG_MAX = 85.0;
 
@@ -1429,7 +1431,7 @@ function renderWeatherCanvas(valueKey, colorStops, stations) {
             const value = idwInterpolate(lat, lng, valueKey, stations);
             const c = interpolateColorStops(colorStops, value);
             const idx = (py * W + px) * 4;
-            data[idx]     = c.r;
+            data[idx] = c.r;
             data[idx + 1] = c.g;
             data[idx + 2] = c.b;
             data[idx + 3] = c.a;
@@ -1497,30 +1499,30 @@ function updateMapLayers(simulated = false) {
     // ── Base map switching (Satellite ↔ Dark vector) for Left Map ──────────────────────────
     if (AppState.activeLayers.satellite) {
         if (!AppState.map.hasLayer(AppState.satelliteLayers)) AppState.map.addLayer(AppState.satelliteLayers);
-        if (AppState.map.hasLayer(AppState.darkBaseLayer))    AppState.map.removeLayer(AppState.darkBaseLayer);
+        if (AppState.map.hasLayer(AppState.darkBaseLayer)) AppState.map.removeLayer(AppState.darkBaseLayer);
     } else {
-        if (!AppState.map.hasLayer(AppState.darkBaseLayer))   AppState.map.addLayer(AppState.darkBaseLayer);
-        if (AppState.map.hasLayer(AppState.satelliteLayers))  AppState.map.removeLayer(AppState.satelliteLayers);
+        if (!AppState.map.hasLayer(AppState.darkBaseLayer)) AppState.map.addLayer(AppState.darkBaseLayer);
+        if (AppState.map.hasLayer(AppState.satelliteLayers)) AppState.map.removeLayer(AppState.satelliteLayers);
     }
 
     // ── Base map switching for Right Map ────────────────────────────────────────────────
     if (AppState.mapRight && AppState.isSplitMode) {
         if (AppState.activeLayers.satellite) {
             if (!AppState.mapRight.hasLayer(AppState.satelliteLayersRight)) AppState.mapRight.addLayer(AppState.satelliteLayersRight);
-            if (AppState.mapRight.hasLayer(AppState.darkBaseLayerRight))    AppState.mapRight.removeLayer(AppState.darkBaseLayerRight);
+            if (AppState.mapRight.hasLayer(AppState.darkBaseLayerRight)) AppState.mapRight.removeLayer(AppState.darkBaseLayerRight);
         } else {
-            if (!AppState.mapRight.hasLayer(AppState.darkBaseLayerRight))   AppState.mapRight.addLayer(AppState.darkBaseLayerRight);
-            if (AppState.mapRight.hasLayer(AppState.satelliteLayersRight))  AppState.mapRight.removeLayer(AppState.satelliteLayersRight);
+            if (!AppState.mapRight.hasLayer(AppState.darkBaseLayerRight)) AppState.mapRight.addLayer(AppState.darkBaseLayerRight);
+            if (AppState.mapRight.hasLayer(AppState.satelliteLayersRight)) AppState.mapRight.removeLayer(AppState.satelliteLayersRight);
         }
     }
 
     // ── Determine active weather layer & color stops ───────────────────────────
     let valueKey = null, colorStops = null;
-    if      (AppState.activeLayers.temperature) { valueKey = 'temp';     colorStops = TEMP_COLOR_STOPS;     }
-    else if (AppState.activeLayers.rainfall)    { valueKey = 'rain';     colorStops = RAIN_COLOR_STOPS;     }
-    else if (AppState.activeLayers.wind)        { valueKey = 'wind';     colorStops = WIND_COLOR_STOPS;     }
-    else if (AppState.activeLayers.pressure)    { valueKey = 'pressure'; colorStops = PRESSURE_COLOR_STOPS; }
-    else if (AppState.activeLayers.humidity)    { valueKey = 'humidity'; colorStops = HUMIDITY_COLOR_STOPS; }
+    if (AppState.activeLayers.temperature) { valueKey = 'temp'; colorStops = TEMP_COLOR_STOPS; }
+    else if (AppState.activeLayers.rainfall) { valueKey = 'rain'; colorStops = RAIN_COLOR_STOPS; }
+    else if (AppState.activeLayers.wind) { valueKey = 'wind'; colorStops = WIND_COLOR_STOPS; }
+    else if (AppState.activeLayers.pressure) { valueKey = 'pressure'; colorStops = PRESSURE_COLOR_STOPS; }
+    else if (AppState.activeLayers.humidity) { valueKey = 'humidity'; colorStops = HUMIDITY_COLOR_STOPS; }
 
     let leftStations = [];
     let rightStations = [];
@@ -1550,19 +1552,19 @@ function updateMapLayers(simulated = false) {
         }
         rightStations = AppState.backendDistricts.map(mapBackendToStation);
     } else {
-        const baselineSim = (AppState.isSplitMode) ? false : simulated; 
+        const baselineSim = (AppState.isSplitMode) ? false : simulated;
         const baselineTemp = baselineSim ? AppState.simulator.temp : 0.0;
         const baselineRain = baselineSim ? (AppState.simulator.rain / 100.0) : 0.0;
-        const baselineHum  = baselineSim ? AppState.simulator.humidity : 0.0;
+        const baselineHum = baselineSim ? AppState.simulator.humidity : 0.0;
 
         leftStations = DISTRICT_STATIONS.map(s => {
-            const bTemp = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+            const bTemp = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin')
                 ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'temp') : s.temp;
-            const bRain = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+            const bRain = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin')
                 ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'rain') : s.rain;
-            const bWind = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+            const bWind = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin')
                 ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'wind') : s.wind;
-            const bHum  = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+            const bHum = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin')
                 ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'humidity') : s.humidity;
 
             return {
@@ -1577,21 +1579,21 @@ function updateMapLayers(simulated = false) {
 
         const rightTemp = simulated ? AppState.simulator.temp : 0.0;
         const rightRain = simulated ? (AppState.simulator.rain / 100.0) : 0.0;
-        const rightHum  = simulated ? AppState.simulator.humidity : 0.0;
+        const rightHum = simulated ? AppState.simulator.humidity : 0.0;
 
         rightStations = DISTRICT_STATIONS.map(s => {
-            const bTemp = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+            const bTemp = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin')
                 ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'temp') : s.temp;
-            const bRain = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+            const bRain = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin')
                 ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'rain') : s.rain;
-            const bWind = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+            const bWind = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin')
                 ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'wind') : s.wind;
-            const bHum  = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin') 
+            const bHum = (AppState.playback.isPlaying || AppState.activePanel === 'digital-twin')
                 ? getMonthlyValues(AppState.playback.currentMonth, s.coords[0], s.coords[1], 'humidity') : s.humidity;
 
             let scenarioTemp = rightTemp;
             let scenarioRain = rightRain;
-            let scenarioHum  = rightHum;
+            let scenarioHum = rightHum;
             let scenarioWind = bWind * timeMult;
             let scenarioPress = s.pressure * timeMult;
 
@@ -1675,7 +1677,7 @@ function initCharts() {
         .then(res => res.json())
         .then(data => {
             const dailyData = data.daily;
-            
+
             // Extract values
             const days = dailyData.map(d => d.day.substring(0, 3).toUpperCase()); // abbreviate SUN, MON etc
             const temps = dailyData.map(d => d.temperature);
@@ -1717,12 +1719,12 @@ function initCharts() {
                     labels: { style: { fontSize: '9px', colors: '#94a3b8' } }
                 },
                 yaxis: [
-                    { 
+                    {
                         title: { text: 'Temp (°C)', style: { color: '#FF9800', fontSize: '9px' } },
                         labels: { style: { fontSize: '9px', colors: '#94a3b8' } }
                     },
-                    { 
-                        opposite: true, 
+                    {
+                        opposite: true,
                         title: { text: 'Rain (mm)', style: { color: '#00D2FF', fontSize: '9px' } },
                         labels: { style: { fontSize: '9px', colors: '#94a3b8' } }
                     }
@@ -1785,7 +1787,7 @@ function generateReport(type) {
         .then(data => {
             const reportContent = document.getElementById("report-results");
             if (!reportContent) return;
-            
+
             reportContent.classList.remove("hidden");
             gsap.from(reportContent, { opacity: 0, y: 10, duration: 0.3 });
 
@@ -1875,12 +1877,12 @@ function bindDynamicAITooltip(marker, station) {
                 applyAPITooltip(marker, station.apiData, station);
                 return;
             }
-            
+
             try {
                 // Pass coords to your Django backend using query params
                 const resp = await fetch(`/api/weather/?lat=${station.coords[0]}&lng=${station.coords[1]}`);
                 const data = await resp.json();
-                
+
                 // Cache it
                 station.apiLoaded = true;
                 station.apiData = data;
@@ -1907,10 +1909,10 @@ function bindDynamicAITooltip(marker, station) {
                 body: JSON.stringify({ lat: station.coords[0], lng: station.coords[1], date: new Date().toISOString() })
             });
             const data = await resp.json();
-            
+
             // CACHE IT, BUT DO NOT MUTATE BASE STATION DATA 🚫
-            station.aiLoaded = true; 
-            station.aiData = data; 
+            station.aiLoaded = true;
+            station.aiData = data;
 
             // Render it
             applyAITooltip(marker, data, station);
@@ -1951,13 +1953,13 @@ function populateCalendarDays() {
     const monthSelect = document.getElementById("cal-month");
     const daySelect = document.getElementById("cal-day");
     if (!yearSelect || !monthSelect || !daySelect) return;
-    
+
     const year = parseInt(yearSelect.value);
     const month = parseInt(monthSelect.value);
-    
+
     const daysInMonth = new Date(year, month, 0).getDate();
     const currentSelected = parseInt(daySelect.value) || AppState.timeDay || 1;
-    
+
     daySelect.innerHTML = "";
     for (let d = 1; d <= daysInMonth; d++) {
         const opt = document.createElement("option");
@@ -1968,7 +1970,7 @@ function populateCalendarDays() {
         }
         daySelect.appendChild(opt);
     }
-    
+
     AppState.timeYear = year;
     AppState.timeMonth = month;
     AppState.timeDay = parseInt(daySelect.value);
@@ -1989,24 +1991,24 @@ function initTimeNavigation() {
 
     const daySelect = document.getElementById("cal-day");
     if (daySelect) daySelect.value = AppState.timeDay;
-    
+
     document.getElementById("cal-year")?.addEventListener("change", (e) => {
         AppState.timeYear = parseInt(e.target.value);
         populateCalendarDays();
         updateTimeNavigationState();
     });
-    
+
     document.getElementById("cal-month")?.addEventListener("change", (e) => {
         AppState.timeMonth = parseInt(e.target.value);
         populateCalendarDays();
         updateTimeNavigationState();
     });
-    
+
     document.getElementById("cal-day")?.addEventListener("change", (e) => {
         AppState.timeDay = parseInt(e.target.value);
         updateTimeNavigationState();
     });
-    
+
     const modeButtons = ["history", "live", "forecast", "scenario"];
     modeButtons.forEach(m => {
         const btn = document.getElementById(`mode-${m}`);
@@ -2022,7 +2024,7 @@ function initTimeNavigation() {
                 btn.classList.add("bg-cyan-500", "text-navy-900");
                 btn.classList.remove("text-slate-400");
                 AppState.timeMode = m;
-                
+
                 if (m !== 'scenario') {
                     AppState.activeScenario = null;
                     document.querySelectorAll(".scenario-btn").forEach(sb => {
@@ -2030,20 +2032,20 @@ function initTimeNavigation() {
                         sb.style.boxShadow = "";
                     });
                 }
-                
+
                 updateTimeNavigationState();
             });
         }
     });
-    
+
     document.getElementById("pb-play-btn")?.addEventListener("click", () => {
         startPlayback();
     });
-    
+
     document.getElementById("pb-pause-btn")?.addEventListener("click", () => {
         pausePlayback();
     });
-    
+
     document.getElementById("pb-stop-btn")?.addEventListener("click", () => {
         if (AppState.timeMode === 'forecast') {
             pausePlayback();
@@ -2053,7 +2055,7 @@ function initTimeNavigation() {
             stopPlayback();
         }
     });
-    
+
     document.getElementById("pb-prev-btn")?.addEventListener("click", () => {
         pausePlayback();
         if (AppState.timeMode === 'forecast') {
@@ -2084,7 +2086,7 @@ function initTimeNavigation() {
             updateTimeNavigationState();
         }
     });
-    
+
     document.getElementById("pb-next-btn")?.addEventListener("click", () => {
         pausePlayback();
         if (AppState.timeMode === 'forecast') {
@@ -2115,7 +2117,7 @@ function initTimeNavigation() {
             updateTimeNavigationState();
         }
     });
-    
+
     document.querySelectorAll(".timeline-hour-dot").forEach(dot => {
         dot.addEventListener("click", () => {
             pausePlayback();
@@ -2158,13 +2160,13 @@ function updateTimeNavigationState() {
         // Calculate target date based on offset from selected start date
         const startDate = new Date(AppState.timeYear, AppState.timeMonth - 1, AppState.timeDay);
         const targetDate = new Date(startDate.getTime() + AppState.timeDayOffset * 24 * 60 * 60 * 1000);
-        
+
         // Keep target details
         const targetYear = targetDate.getFullYear();
         const targetMonth = targetDate.getMonth() + 1;
         const targetDay = targetDate.getDate();
         const targetHour = 12; // default to noon for forecast daily views
-        
+
         const yr = targetYear;
         const mo = String(targetMonth).padStart(2, '0');
         const dy = String(targetDay).padStart(2, '0');
@@ -2176,21 +2178,21 @@ function updateTimeNavigationState() {
             const dotDate = new Date(startDate.getTime() + idx * 24 * 60 * 60 * 1000);
             const dotName = idx === 0 ? "Today" : daysAbbrev[dotDate.getDay()];
             const dotLabel = `${dotDate.getDate()} ${monthsAbbrev[dotDate.getMonth()]}`;
-            
+
             const nameEl = dot.querySelector(".day-name");
             if (nameEl) {
                 nameEl.innerText = `${dotName} (${dotLabel})`;
             }
-            
+
             const coreEl = dot.querySelector(".dot-core");
             if (coreEl) {
                 coreEl.innerText = String(dotDate.getDate()).padStart(2, '0');
             }
-            
+
             dot.classList.remove("active", "passed");
             if (idx === AppState.timeDayOffset) {
                 dot.classList.add("active");
-                
+
                 const caret = document.getElementById("timeline-caret-daily");
                 if (caret) {
                     const rowContainer = dot.closest('.relative');
@@ -2226,7 +2228,7 @@ function updateTimeNavigationState() {
         const dy = String(AppState.timeDay).padStart(2, '0');
         const hr = String(AppState.timeHour).padStart(2, '0');
         dtStr = `${yr}-${mo}-${dy}T${hr}:00`;
-        
+
         const activeDot = document.querySelector(`.timeline-hour-dot[data-hour="${AppState.timeHour}"]`);
         const caret = document.getElementById("timeline-caret");
         if (activeDot && caret) {
@@ -2238,7 +2240,7 @@ function updateTimeNavigationState() {
                 caret.style.opacity = "1";
             }
         }
-        
+
         document.querySelectorAll(".timeline-hour-dot").forEach(dot => {
             const dotHr = parseInt(dot.getAttribute("data-hour"));
             dot.classList.remove("active", "passed");
@@ -2248,10 +2250,10 @@ function updateTimeNavigationState() {
                 dot.classList.add("passed");
             }
         });
-        
+
         const progressRow1 = document.getElementById("timeline-progress-row1");
         const progressRow2 = document.getElementById("timeline-progress-row2");
-        
+
         if (AppState.timeHour <= 11) {
             const pct = (AppState.timeHour / 11) * 100;
             if (progressRow1) progressRow1.style.width = `${pct}%`;
@@ -2262,7 +2264,7 @@ function updateTimeNavigationState() {
             if (progressRow2) progressRow2.style.width = `${pct}%`;
         }
     }
-    
+
     return fetchTimeNavigationData(dtStr, AppState.timeMode);
 }
 
@@ -2271,7 +2273,7 @@ async function fetchTimeNavigationData(dtStr, modeVal) {
     if (modeVal === 'scenario') {
         url += `&temp_delta=${AppState.simulator.temp}&rain_delta=${AppState.simulator.rain}&humidity_change=${AppState.simulator.humidity}&scenario_category=${AppState.activeScenario || 'Custom'}`;
     }
-    
+
     if (modeVal === 'scenario' && AppState.isSplitMode) {
         let baselineUrl = `/api/playback?datetime=${encodeURIComponent(dtStr)}&mode=scenario&temp_delta=0&rain_delta=0&humidity_change=0&scenario_category=Custom`;
         try {
@@ -2284,17 +2286,17 @@ async function fetchTimeNavigationData(dtStr, modeVal) {
     } else {
         AppState.baselineDistricts = null;
     }
-    
+
     try {
         const resp = await fetch(url);
         const data = await resp.json();
-        
+
         AppState.backendDistricts = data.districts;
-        
+
         const parsedDate = new Date(data.date);
         const monthsAbbrev = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const dtDisp = document.getElementById("active-datetime-display");
-        
+
         if (modeVal === 'forecast') {
             // Keep AppState and selectors as the selected start date!
             // Only update active display label to show the current active forecast day
@@ -2305,34 +2307,34 @@ async function fetchTimeNavigationData(dtStr, modeVal) {
             AppState.timeYear = parsedDate.getFullYear();
             AppState.timeMonth = parsedDate.getMonth() + 1;
             AppState.timeDay = parsedDate.getDate();
-            
+
             // Only update hour if not in forecast mode (since we stub it to 12)
             AppState.timeHour = data.hour;
-            
+
             document.getElementById("cal-year").value = AppState.timeYear;
             document.getElementById("cal-month").value = AppState.timeMonth;
             populateCalendarDays();
             document.getElementById("cal-day").value = AppState.timeDay;
-            
+
             if (dtDisp) {
-                const displayHour = AppState.timeHour === 0 ? "12:00 AM" : 
-                                    AppState.timeHour === 12 ? "12:00 PM" : 
-                                    AppState.timeHour > 12 ? `${AppState.timeHour - 12}:00 PM` : `${AppState.timeHour}:00 AM`;
+                const displayHour = AppState.timeHour === 0 ? "12:00 AM" :
+                    AppState.timeHour === 12 ? "12:00 PM" :
+                        AppState.timeHour > 12 ? `${AppState.timeHour - 12}:00 PM` : `${AppState.timeHour}:00 AM`;
                 dtDisp.innerText = `${AppState.timeDay} ${monthsAbbrev[AppState.timeMonth - 1]} ${AppState.timeYear}, ${displayHour} IST`;
             }
         }
-        
+
         // Also update the active simulation date indicator in the simulator panel
         const simDateEl = document.getElementById("simulator-active-date");
         if (simDateEl) {
             simDateEl.innerText = `${parsedDate.getDate()} ${monthsAbbrev[parsedDate.getMonth()]} ${parsedDate.getFullYear()}`;
         }
-        
+
         animateValue('kpi-temp', data.metrics.temperature, ' °C');
         animateValue('kpi-rain', data.metrics.rainfall, ' mm');
         animateValue('kpi-humidity', Math.round(data.metrics.humidity), '%');
         animateValue('kpi-wind', data.metrics.wind_speed, ' kmph');
-        
+
         const currentDistrictData = data.districts.find(d => d.district.toLowerCase() === AppState.selectedDistrict.toLowerCase()) || data.districts[0];
         if (currentDistrictData) {
             const clickedTempEl = document.getElementById("clicked-temp");
@@ -2343,33 +2345,33 @@ async function fetchTimeNavigationData(dtStr, modeVal) {
             if (clickedWindEl) clickedWindEl.innerText = `${currentDistrictData.wind_speed.toFixed(1)} kmph ${currentDistrictData.wind_direction}`;
             const clickedPressureEl = document.getElementById("clicked-pressure");
             if (clickedPressureEl) clickedPressureEl.innerText = `${currentDistrictData.pressure.toFixed(1)} hPa`;
-            
+
             const windDirEl = document.getElementById("kpi-wind-dir");
             if (windDirEl) windDirEl.innerText = currentDistrictData.wind_direction;
-            
+
             const navigationIcon = document.querySelector("#dashboard-widgets .glow-wind i[data-lucide='navigation']");
             if (navigationIcon) {
                 const angle = getWindAngle(currentDistrictData.wind_direction);
                 navigationIcon.style.transform = `rotate(${angle}deg)`;
             }
-            
+
             updateRiskBadge('risk-drought', currentDistrictData.drought_risk);
             updateRiskBadge('risk-flood', currentDistrictData.flood_risk);
             updateRiskBadge('risk-heatwave', currentDistrictData.heatwave_risk);
-            
+
             const agriEl = document.getElementById('risk-agri');
             if (agriEl) {
-                const agriMap = {'Low': 'Optimal Yield Output', 'Medium': 'Moderate Stress', 'High': 'Critical Yield Loss', 'Critical': 'Severe Crop Wilting / Stress'};
+                const agriMap = { 'Low': 'Optimal Yield Output', 'Medium': 'Moderate Stress', 'High': 'Critical Yield Loss', 'Critical': 'Severe Crop Wilting / Stress' };
                 agriEl.innerText = agriMap[currentDistrictData.agriculture_risk] || 'Optimal Yield Output';
             }
-            
+
             const waterEl = document.getElementById('risk-water');
             if (waterEl) waterEl.innerText = currentDistrictData.water_stress.toFixed(1) + '%';
-            
+
             const progressEl = document.getElementById('stress-progress');
             if (progressEl) progressEl.style.width = currentDistrictData.water_stress + '%';
         }
-        
+
         const alertsContainer = document.getElementById("alerts-container");
         if (alertsContainer && data.alerts) {
             alertsContainer.innerHTML = "";
@@ -2391,12 +2393,12 @@ async function fetchTimeNavigationData(dtStr, modeVal) {
                 `;
             });
         }
-        
+
         updateMapLayers(modeVal === 'scenario');
         drawCycloneOverlay(data.cyclone);
         updatePrognosisMatrix(data.charts);
         updatePrognosisCharts(data.charts);
-        
+
     } catch (e) {
         console.error("Time navigation fetch failed:", e);
     }
@@ -2404,7 +2406,7 @@ async function fetchTimeNavigationData(dtStr, modeVal) {
 
 function updatePrognosisMatrix(charts) {
     if (!charts) return;
-    
+
     // 1. Air Temperature Row (Continuous Heat Strip)
     let tempRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
     tempRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5 min-w-[120px]"><i data-lucide="thermometer" class="w-3.5 h-3.5 text-orange-400"></i> Temp (°C)</td>`;
@@ -2415,7 +2417,7 @@ function updatePrognosisMatrix(charts) {
         tempRow += `<td class="p-1 text-center font-extrabold text-[9.5px]" style="background-color: ${color}; color: ${textColor}; border-right: 1px solid rgba(8, 20, 32, 0.15)">${val.toFixed(1)}°</td>`;
     }
     tempRow += `</tr>`;
-    
+
     // 2. Land Surface Temperature (LST) Row (Copper/Thermal Strip)
     let lstRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
     lstRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="sun" class="w-3.5 h-3.5 text-amber-500"></i> LST (°C)</td>`;
@@ -2441,7 +2443,7 @@ function updatePrognosisMatrix(charts) {
         }
     }
     sstRow += `</tr>`;
-    
+
     // 4. Rainfall Row (Vertical bar scan + numbers)
     let rainRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
     rainRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="cloud-rain" class="w-3.5 h-3.5 text-blue-400"></i> Rain (mm)</td>`;
@@ -2460,7 +2462,7 @@ function updatePrognosisMatrix(charts) {
         }
     }
     rainRow += `</tr>`;
-    
+
     // 5. Wind Velocity Row (Rotated arrows + speed + speed background)
     let windRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
     windRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="wind" class="w-3.5 h-3.5 text-cyan-400"></i> Wind (kt)</td>`;
@@ -2469,7 +2471,7 @@ function updatePrognosisMatrix(charts) {
         const dir = charts.wind_direction[h];
         const angle = getWindAngle(dir);
         const color = getWindColor(speed);
-        
+
         windRow += `<td class="p-1 text-center font-bold" style="background-color: ${color}1e; border-right: 1px solid rgba(255,255,255,0.02)">
             <div class="flex flex-col items-center justify-center gap-1">
                 <svg viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.5" class="w-3.5 h-3.5 transition-transform" style="transform: rotate(${angle}deg);">
@@ -2481,7 +2483,7 @@ function updatePrognosisMatrix(charts) {
         </td>`;
     }
     windRow += `</tr>`;
-    
+
     // 6. Humidity Row (Color-coded text + background tint)
     let humidityRow = `<tr class="border-b border-slate-900/35 hover:bg-slate-800/10">`;
     humidityRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="droplet" class="w-3.5 h-3.5 text-teal-400"></i> Humidity</td>`;
@@ -2491,7 +2493,7 @@ function updatePrognosisMatrix(charts) {
         humidityRow += `<td class="p-1 text-center font-bold" style="background-color: ${color}14; color: ${color}; border-right: 1px solid rgba(255,255,255,0.02)">${Math.round(val)}%</td>`;
     }
     humidityRow += `</tr>`;
-    
+
     // 7. Atmospheric Pressure Row (Color-coded text + background tint)
     let pressureRow = `<tr class="hover:bg-slate-800/10">`;
     pressureRow += `<td class="py-2.5 px-2 text-slate-400 font-semibold border-r border-slate-900/30 flex items-center gap-1.5"><i data-lucide="gauge" class="w-3.5 h-3.5 text-indigo-400"></i> Pressure</td>`;
@@ -2501,7 +2503,7 @@ function updatePrognosisMatrix(charts) {
         pressureRow += `<td class="p-1 text-center font-bold" style="background-color: ${color}14; color: ${color}; border-right: 1px solid rgba(255,255,255,0.02)">${Math.round(val)}</td>`;
     }
     pressureRow += `</tr>`;
-    
+
     const container = document.getElementById("prognosis-rows-container");
     if (container) {
         container.innerHTML = tempRow + lstRow + sstRow + rainRow + windRow + humidityRow + pressureRow;
@@ -2513,7 +2515,7 @@ function updatePrognosisMatrix(charts) {
 
 function updatePrognosisCharts(charts) {
     if (!charts) return;
-    
+
     if (AppState.charts.hourly) {
         AppState.charts.hourly.updateSeries([{
             name: 'Rainfall Hourly',
@@ -2525,7 +2527,7 @@ function updatePrognosisCharts(charts) {
             }
         });
     }
-    
+
     if (AppState.charts.trends) {
         AppState.charts.trends.updateSeries([
             { name: 'Temperature (°C)', data: charts.temperature, type: 'line' },
@@ -2549,7 +2551,7 @@ function initWindParticles() {
         leftMapContainer.appendChild(canvas);
         AppState.windCanvasLeft = canvas;
     }
-    
+
     const rightMapContainer = document.getElementById("map-right");
     if (rightMapContainer && !document.getElementById("wind-canvas-right")) {
         const canvas = document.createElement("canvas");
@@ -2559,7 +2561,7 @@ function initWindParticles() {
         rightMapContainer.appendChild(canvas);
         AppState.windCanvasRight = canvas;
     }
-    
+
     AppState.windParticlesActive = true;
     animateWindParticles();
 }
@@ -2582,7 +2584,7 @@ function clearCycloneRadar() {
 
 function updateCycloneRadarOverlay(map, eye, isLeft) {
     if (!eye) return;
-    
+
     const size = 128; // 128x128 canvas is extremely fast to calculate and renders smoothly when scaled
     const canvas = document.createElement('canvas');
     canvas.width = size;
@@ -2590,43 +2592,43 @@ function updateCycloneRadarOverlay(map, eye, isLeft) {
     const ctx = canvas.getContext('2d');
     const imgData = ctx.createImageData(size, size);
     const data = imgData.data;
-    
+
     const cx = size / 2;
     const cy = size / 2;
     const alpha = cycloneRadarRotation;
-    
+
     for (let y = 0; y < size; y++) {
         for (let x = 0; x < size; x++) {
             const dx = x - cx;
             const dy = y - cy;
             const r = Math.hypot(dx, dy);
-            
+
             if (r > cx - 2) continue;
-            
+
             const phi = Math.atan2(dy, dx);
             const eyeRadius = 9; // eye radius on 128x128 canvas
             let intensity = 0;
-            
+
             if (r >= eyeRadius) {
                 // Spiral arms equation (counter-clockwise spin)
                 const spiralVal = Math.sin(r / 6 - 3 * phi - alpha);
-                
+
                 // Eyewall peak intensity
                 const eyewall = Math.exp(-Math.pow(r - 14, 2) / 25) * 0.95;
-                
+
                 // Spiral arms intensity
                 const arms = Math.exp(-Math.pow(r - 40, 2) / 400) * Math.max(0, spiralVal) * 0.75;
-                
+
                 intensity = Math.max(eyewall, arms);
             }
-            
+
             // Fade out towards the outer edges
             intensity *= Math.exp(-Math.pow(r / (size * 0.45), 4));
-            
+
             const pixelIdx = (y * size + x) * 4;
             if (intensity > 0.15) {
                 let r_col = 0, g_col = 0, b_col = 0, a_col = 0;
-                
+
                 if (intensity > 0.8) {
                     // Eyewall core - intense red/magenta
                     r_col = 255; g_col = 0; b_col = 128; a_col = Math.floor(intensity * 180);
@@ -2643,7 +2645,7 @@ function updateCycloneRadarOverlay(map, eye, isLeft) {
                     // Outermost bands - blue/cyan
                     r_col = 6; g_col = 182; b_col = 212; a_col = Math.floor(intensity * 110);
                 }
-                
+
                 data[pixelIdx] = r_col;
                 data[pixelIdx + 1] = g_col;
                 data[pixelIdx + 2] = b_col;
@@ -2653,17 +2655,17 @@ function updateCycloneRadarOverlay(map, eye, isLeft) {
             }
         }
     }
-    
+
     ctx.putImageData(imgData, 0, 0);
     const dataUrl = canvas.toDataURL();
-    
+
     const latSpan = 5.0; // 5 degrees latitude wide (approx 550 km)
     const lngSpan = 5.0;
     const overlayBounds = [
-        [eye[0] - latSpan/2, eye[1] - lngSpan/2],
-        [eye[0] + latSpan/2, eye[1] + lngSpan/2]
+        [eye[0] - latSpan / 2, eye[1] - lngSpan / 2],
+        [eye[0] + latSpan / 2, eye[1] + lngSpan / 2]
     ];
-    
+
     if (isLeft) {
         if (cycloneRadarOverlayLeft) {
             cycloneRadarOverlayLeft.setUrl(dataUrl);
@@ -2691,11 +2693,11 @@ function updateCycloneRadarOverlay(map, eye, isLeft) {
 
 function animateWindParticles() {
     if (!AppState.windParticlesActive) return;
-    
+
     requestAnimationFrame(animateWindParticles);
-    
+
     const stationsSource = AppState.backendDistricts || DISTRICT_STATIONS;
-    
+
     // Update smooth eye movement before drawing
     if (AppState.cycloneActive && AppState.cycloneEye) {
         // Track previous eye position to calculate movement delta for particles
@@ -2704,11 +2706,11 @@ function animateWindParticles() {
         if (AppState.cycloneTargetEye) {
             const currentEye = AppState.cycloneEye;
             const targetEye = AppState.cycloneTargetEye;
-            
+
             const dLat = targetEye[0] - currentEye[0];
             const dLng = targetEye[1] - currentEye[1];
             const dist = Math.hypot(dLat, dLng);
-            
+
             if (dist > 0.001) {
                 // Move eye 1.5% of the way to the target on each frame
                 AppState.cycloneEye = [
@@ -2726,7 +2728,7 @@ function animateWindParticles() {
     if (AppState.windCanvasLeft && AppState.map) {
         drawWindCanvas(AppState.windCanvasLeft, AppState.map, stationsSource);
     }
-    
+
     if (AppState.windCanvasRight && AppState.mapRight && AppState.isSplitMode) {
         drawWindCanvas(AppState.windCanvasRight, AppState.mapRight, stationsSource);
     }
@@ -2738,7 +2740,7 @@ function animateWindParticles() {
 function drawWindCanvas(canvas, map, stations) {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    
+
     const mapContainer = map.getContainer();
     const rect = mapContainer.getBoundingClientRect();
     if (canvas.width !== rect.width || canvas.height !== rect.height) {
@@ -2746,14 +2748,14 @@ function drawWindCanvas(canvas, map, stations) {
         canvas.height = rect.height;
         canvas.particles = [];
     }
-    
+
     ctx.globalCompositeOperation = 'destination-out';
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; 
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.12)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.globalCompositeOperation = 'source-over';
-    
+
     if (!AppState.activeLayers.wind && !AppState.cycloneActive) return;
-    
+
     const districtsData = stations.map(d => {
         const speed = d.wind_speed || d.wind || 0;
         const dir = d.wind_direction || d.dir || 'SW';
@@ -2766,12 +2768,12 @@ function drawWindCanvas(canvas, map, stations) {
             v: -speed * Math.cos(angleRad)
         };
     });
-    
+
     let particles = canvas.particles || [];
     // Increase density specifically when the cyclone is active
     const targetMaxParticles = AppState.cycloneActive ? 2500 : 1500;
     const bounds = map.getBounds();
-    
+
     if (particles.length < targetMaxParticles) {
         const toAdd = targetMaxParticles - particles.length;
         for (let i = 0; i < toAdd; i++) {
@@ -2781,9 +2783,9 @@ function drawWindCanvas(canvas, map, stations) {
     } else if (particles.length > targetMaxParticles) {
         particles.length = targetMaxParticles;
     }
-    
-    const dt = 0.0003; 
-    
+
+    const dt = 0.0003;
+
     // Calculate eye movement delta to apply to cyclone particles
     let eyeDeltaLat = 0;
     let eyeDeltaLng = 0;
@@ -2791,18 +2793,18 @@ function drawWindCanvas(canvas, map, stations) {
         eyeDeltaLat = AppState.cycloneEye[0] - AppState.prevCycloneEye[0];
         eyeDeltaLng = AppState.cycloneEye[1] - AppState.prevCycloneEye[1];
     }
-    
+
     particles.forEach(p => {
         // If inside the cyclone, first shift the particle by the eye's movement delta
         if (AppState.cycloneActive && AppState.cycloneEye) {
             const eyeLat = AppState.cycloneEye[0];
             const eyeLng = AppState.cycloneEye[1];
-            
+
             // Check distance relative to previous eye to apply proper delta tracking
             const refLat = AppState.prevCycloneEye ? AppState.prevCycloneEye[0] : eyeLat;
             const refLng = AppState.prevCycloneEye ? AppState.prevCycloneEye[1] : eyeLng;
             const distToRef = Math.hypot(p.lat - refLat, p.lng - refLng);
-            
+
             if (distToRef < 3.5) {
                 p.lat += eyeDeltaLat;
                 p.lng += eyeDeltaLng;
@@ -2810,12 +2812,12 @@ function drawWindCanvas(canvas, map, stations) {
         }
 
         const ptStart = map.latLngToContainerPoint([p.lat, p.lng]);
-        
+
         let u = idwInterpolateVector(p.lat, p.lng, 'u', districtsData);
         let v = idwInterpolateVector(p.lat, p.lng, 'v', districtsData);
         let isInsideCyclone = false;
         let dist = 999;
-        
+
         if (AppState.cycloneActive && AppState.cycloneEye) {
             const eyeLat = AppState.cycloneEye[0];
             const eyeLng = AppState.cycloneEye[1];
@@ -2823,10 +2825,10 @@ function drawWindCanvas(canvas, map, stations) {
             const dlng = p.lng - eyeLng;
             dist = Math.hypot(dlat, dlng);
             const cycloneRadius = 3.5;
-            
+
             if (dist < cycloneRadius) {
                 isInsideCyclone = true;
-                
+
                 // If particle is too close to the eye, respawn it at the outer edge to prevent bunching in center
                 if (dist < 0.35) {
                     const r = 2.5 + Math.random() * 1.0; // spawn in outer rings (2.5 to 3.5 deg)
@@ -2836,18 +2838,18 @@ function drawWindCanvas(canvas, map, stations) {
                     p.age = 20 + Math.floor(Math.random() * 30);
                     return;
                 }
-                
+
                 const speed = AppState.cycloneWindSpeed || 75;
                 // Swirl speed curve peaking around eyewall (0.6 deg) and dropping off
                 const vt = speed * 1.6 * (dist / (dist + 0.3)) * Math.exp(-dist / 1.8);
                 const vr = -vt * 0.18; // Inward velocity for spiraling effect
-                
+
                 const cosTheta = dlng / dist;
                 const sinTheta = dlat / dist;
-                
+
                 const u_spiral = vr * cosTheta - vt * sinTheta;
                 const v_spiral = vr * sinTheta + vt * cosTheta;
-                
+
                 // Blend with environmental wind at the outer edges of the cyclone
                 let blend = 1.0;
                 if (dist > 2.5) {
@@ -2857,14 +2859,14 @@ function drawWindCanvas(canvas, map, stations) {
                 v = v * (1.0 - blend) + v_spiral * blend;
             }
         }
-        
+
         p.lng += u * dt;
         p.lat += v * dt;
         p.age--;
-        
+
         const ptEnd = map.latLngToContainerPoint([p.lat, p.lng]);
         const speedVal = Math.hypot(u, v);
-        
+
         let opacityMultiplier = 1.0;
         if (!AppState.activeLayers.wind && AppState.cycloneActive && AppState.cycloneEye) {
             if (dist > 3.5) {
@@ -2877,7 +2879,7 @@ function drawWindCanvas(canvas, map, stations) {
         if (p.age > 0 && bounds.contains([p.lat, p.lng]) &&
             ptStart.x >= 0 && ptStart.x <= canvas.width &&
             ptStart.y >= 0 && ptStart.y <= canvas.height) {
-            
+
             const alphaMultiplier = opacityMultiplier;
             if (alphaMultiplier > 0) {
                 ctx.beginPath();
@@ -2885,7 +2887,7 @@ function drawWindCanvas(canvas, map, stations) {
                     // Custom concentric color palette & size profile (glowing white, cyan, sky blue, indigo. NO red!)
                     let dotColor;
                     let dotRadius;
-                    
+
                     if (dist < 0.8) {
                         // Eyewall core - intense glowing white/cyan
                         dotColor = `rgba(255, 255, 255, ${0.95 * alphaMultiplier})`;
@@ -2903,7 +2905,7 @@ function drawWindCanvas(canvas, map, stations) {
                         dotColor = `rgba(99, 102, 241, ${0.6 * alphaMultiplier})`;
                         dotRadius = 1.1;
                     }
-                    
+
                     ctx.arc(ptEnd.x, ptEnd.y, dotRadius, 0, 2 * Math.PI);
                     ctx.fillStyle = dotColor;
                     ctx.fill();
@@ -2912,9 +2914,9 @@ function drawWindCanvas(canvas, map, stations) {
                     if (speedVal < 10) {
                         baseColor = [255, 255, 255, 0.45];
                     } else if (speedVal < 18) {
-                        baseColor = [34, 211, 238, 0.65]; 
+                        baseColor = [34, 211, 238, 0.65];
                     } else if (speedVal < 26) {
-                        baseColor = [163, 230, 53, 0.75]; 
+                        baseColor = [163, 230, 53, 0.75];
                     } else {
                         baseColor = [245, 158, 11, 0.8]; // Orange/amber instead of red for environmental high winds
                     }
@@ -2938,7 +2940,7 @@ function spawnParticle(bounds) {
     if (AppState.cycloneActive && AppState.cycloneEye) {
         // Spawn 65% of new particles inside the cyclone to keep it dense, 35% elsewhere
         if (Math.random() < 0.65 || !AppState.activeLayers.wind) {
-            const r = Math.random() * 3.5; 
+            const r = Math.random() * 3.5;
             const theta = Math.random() * 2 * Math.PI;
             return {
                 lat: AppState.cycloneEye[0] + r * Math.sin(theta),
@@ -2976,7 +2978,7 @@ function drawCycloneOverlay(cyclone) {
         AppState.cycloneLayers.forEach(l => AppState.map.removeLayer(l));
     }
     AppState.cycloneLayers = [];
-    
+
     if (AppState.cycloneLayersRight && AppState.mapRight) {
         AppState.cycloneLayersRight.forEach(l => AppState.mapRight.removeLayer(l));
     }
@@ -2991,7 +2993,7 @@ function drawCycloneOverlay(cyclone) {
 
     AppState.cycloneActive = true;
     AppState.cycloneTargetEye = cyclone.eye;
-    
+
     // Initialize eye if it doesn't exist yet, to prevent jumping from [0,0]
     if (!AppState.cycloneEye) {
         AppState.cycloneEye = [...cyclone.eye];
@@ -3015,11 +3017,11 @@ let playbackInterval = null;
 
 function startPlayback() {
     if (AppState.playback.isPlaying) return;
-    
+
     AppState.playback.isPlaying = true;
     document.getElementById("pb-play-btn")?.classList.add("hidden");
     document.getElementById("pb-pause-btn")?.classList.remove("hidden");
-    
+
     runPlaybackCycle();
 }
 
@@ -3045,7 +3047,7 @@ function resetPlayback() {
 
 async function runPlaybackCycle() {
     if (!AppState.playback.isPlaying) return;
-    
+
     if (AppState.timeMode === 'forecast') {
         AppState.timeDayOffset++;
         if (AppState.timeDayOffset > 6) {
@@ -3071,18 +3073,18 @@ async function runPlaybackCycle() {
             document.getElementById("cal-day").value = AppState.timeDay;
         }
     }
-    
+
     const startTime = Date.now();
     try {
         await updateTimeNavigationState();
     } catch (e) {
         console.error("Playback fetch failed in cycle:", e);
     }
-    
+
     const elapsed = Date.now() - startTime;
     const speedMs = 1800 / AppState.playback.speed;
     const delay = Math.max(50, speedMs - elapsed);
-    
+
     playbackInterval = setTimeout(runPlaybackCycle, delay);
 }
 
@@ -3090,7 +3092,7 @@ async function runPlaybackCycle() {
 function clearHazards() {
     AppState.hazardLayers.forEach(l => AppState.map.removeLayer(l));
     AppState.hazardLayers = [];
-    
+
     if (AppState.mapRight) {
         AppState.hazardLayersRight.forEach(l => AppState.mapRight.removeLayer(l));
         AppState.hazardLayersRight = [];
@@ -3122,15 +3124,15 @@ function updateVisualHazards() {
 
     if (scenario === 'cyclone') {
         const trackPoints = [
-            [14.0, 83.5], 
+            [14.0, 83.5],
             [15.2, 82.8],
             [16.4, 82.1],
-            [17.68, 83.21] 
+            [17.68, 83.21]
         ];
 
         AppState.cycloneActive = true;
         AppState.cycloneWindSpeed = 75;
-        
+
         // Initialize eye coordinates. They will be driven dynamically by the timeline.
         if (!AppState.cycloneEye) {
             AppState.cycloneEye = [...trackPoints[0]];
@@ -3138,7 +3140,7 @@ function updateVisualHazards() {
         AppState.cycloneTargetEye = [...trackPoints[0]];
     } else if (scenario === 'flood') {
         const floodStyle = { fillColor: '#3b82f6', fillOpacity: 0.35, color: '#2563eb', weight: 3 };
-        
+
         if (AppState.districtLayer) {
             AppState.districtLayer.setStyle(feature => {
                 const name = feature.properties.NAME_1 || feature.properties.state_name || feature.properties.STNAME || "";
@@ -3148,7 +3150,7 @@ function updateVisualHazards() {
                 return { fillColor: 'transparent', fillOpacity: 0, color: '#ffffff', weight: 1 };
             });
         }
-        
+
         if (AppState.mapRight && AppState.isSplitMode && AppState.districtLayerRight) {
             AppState.districtLayerRight.setStyle(feature => {
                 const name = feature.properties.NAME_1 || feature.properties.state_name || feature.properties.STNAME || "";
@@ -3161,7 +3163,7 @@ function updateVisualHazards() {
 
     } else if (scenario === 'drought') {
         const droughtStyle = { fillColor: '#b45309', fillOpacity: 0.35, color: '#d97706', weight: 3 };
-        
+
         if (AppState.districtLayer) {
             AppState.districtLayer.setStyle(feature => {
                 const name = feature.properties.NAME_1 || feature.properties.state_name || feature.properties.STNAME || "";
@@ -3193,7 +3195,7 @@ function triggerEvolutionMode() {
 
     let era = 0;
     const eras = ['past', 'present', 'future', 'scenario'];
-    
+
     const interval = setInterval(() => {
         if (!AppState.isEvolutionMode) {
             clearInterval(interval);
@@ -3224,11 +3226,11 @@ function triggerEvolutionMode() {
 function showNotification(title, message, type = 'info') {
     const alertId = Date.now();
     const container = document.getElementById("alerts-container");
-    
+
     let badgeClass = "badge-low";
     if (type === "warning") badgeClass = "badge-high";
     else if (type === "error" || type === "critical") badgeClass = "badge-critical";
-    else if (type === "success") badgeClass = "badge-low"; 
+    else if (type === "success") badgeClass = "badge-low";
 
     const html = `
         <div id="toast-${alertId}" class="p-3 bg-navy-800/90 rounded border border-slate-700/60 shadow-xl flex flex-col gap-1 transition duration-300 transform translate-y-2 opacity-0">
@@ -3244,7 +3246,7 @@ function showNotification(title, message, type = 'info') {
         container.insertAdjacentHTML('afterbegin', html);
         const toast = document.getElementById(`toast-${alertId}`);
         gsap.to(toast, { opacity: 1, y: 0, duration: 0.3 });
-        
+
         setTimeout(() => {
             gsap.to(toast, { opacity: 0, y: -10, duration: 0.3, onComplete: () => toast.remove() });
         }, 4000);
