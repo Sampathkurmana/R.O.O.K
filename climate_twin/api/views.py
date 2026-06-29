@@ -201,9 +201,17 @@ class ForecastAPIView(APIView):
         districts = District.objects.all()
         district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng)) if districts.exists() else None
         
-        preds = PredictionEngine.predict_next_week(lat, lng, district)
+        date_str = request.GET.get('date')
+        if date_str:
+            try:
+                today = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+            except Exception:
+                today = datetime.datetime.now()
+        else:
+            today = datetime.datetime.now()
+            
+        preds = PredictionEngine.predict_next_week(lat, lng, district, start_date=today.date())
         weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-        today = datetime.datetime.now()
         
         daily = []
         for i, pred in enumerate(preds):
@@ -735,24 +743,8 @@ class PlaybackAPIView(APIView):
             target_district = districts.first()
 
         # Adjust target date based on availability or mode
-        if mode == 'live':
-            latest_obs = ClimateObservation.objects.all().order_by('-date').first()
-            if latest_obs:
-                target_date = latest_obs.date
-        elif mode == 'history':
-            # restrict to observations range
-            obs_exists = ClimateObservation.objects.filter(date=target_date).exists()
-            if not obs_exists:
-                closest = ClimateObservation.objects.all().order_by(models.functions.Abs(models.F('date') - target_date)).first()
-                if closest:
-                    target_date = closest.date
-        elif mode == 'forecast':
-            # restrict to prediction range
-            pred_exists = ClimatePrediction.objects.filter(date=target_date).exists()
-            if not pred_exists:
-                closest = ClimatePrediction.objects.all().order_by(models.functions.Abs(models.F('date') - target_date)).first()
-                if closest:
-                    target_date = closest.date
+        # Overrides disabled to allow custom dates
+        pass
 
         # Diurnal Cycle Curve offsets
         temp_offset = -4.0 * ((hour - 14) ** 2) / 100.0 + 3.0

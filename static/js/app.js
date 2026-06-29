@@ -28,11 +28,12 @@ const AppState = {
         speed: 1,                  // playback speed: 1, 2, 5
         intervalId: null
     },
+    timeDayOffset: 0,
     timeMode: 'live',
-    timeYear: 2026,
-    timeMonth: 6,
-    timeDay: 25,
-    timeHour: 15,
+    timeYear: new Date().getFullYear(),
+    timeMonth: new Date().getMonth() + 1,
+    timeDay: new Date().getDate(),
+    timeHour: 12,
     currentDistrictsData: [],
     cycloneActive: false,
     cycloneEye: null,
@@ -1669,7 +1670,8 @@ function updateMapLayers(simulated = false) {
 // Setup Forecast and Simulation Charts
 
 function initCharts() {
-    fetch('/api/forecast/')
+    const dateStr = `${AppState.timeYear}-${String(AppState.timeMonth).padStart(2, '0')}-${String(AppState.timeDay).padStart(2, '0')}`;
+    fetch(`/api/forecast/?lat=${AppState.selectedLat}&lng=${AppState.selectedLng}&date=${dateStr}`)
         .then(res => res.json())
         .then(data => {
             const dailyData = data.daily;
@@ -1973,14 +1975,29 @@ function populateCalendarDays() {
 }
 
 function initTimeNavigation() {
+    const today = new Date();
+    AppState.timeYear = today.getFullYear();
+    AppState.timeMonth = today.getMonth() + 1;
+    AppState.timeDay = today.getDate();
+
+    const yearSelect = document.getElementById("cal-year");
+    const monthSelect = document.getElementById("cal-month");
+    if (yearSelect) yearSelect.value = AppState.timeYear;
+    if (monthSelect) monthSelect.value = AppState.timeMonth;
+
     populateCalendarDays();
+
+    const daySelect = document.getElementById("cal-day");
+    if (daySelect) daySelect.value = AppState.timeDay;
     
-    document.getElementById("cal-year")?.addEventListener("change", () => {
+    document.getElementById("cal-year")?.addEventListener("change", (e) => {
+        AppState.timeYear = parseInt(e.target.value);
         populateCalendarDays();
         updateTimeNavigationState();
     });
     
-    document.getElementById("cal-month")?.addEventListener("change", () => {
+    document.getElementById("cal-month")?.addEventListener("change", (e) => {
+        AppState.timeMonth = parseInt(e.target.value);
         populateCalendarDays();
         updateTimeNavigationState();
     });
@@ -2028,59 +2045,89 @@ function initTimeNavigation() {
     });
     
     document.getElementById("pb-stop-btn")?.addEventListener("click", () => {
-        stopPlayback();
+        if (AppState.timeMode === 'forecast') {
+            pausePlayback();
+            AppState.timeDayOffset = 0;
+            updateTimeNavigationState();
+        } else {
+            stopPlayback();
+        }
     });
     
     document.getElementById("pb-prev-btn")?.addEventListener("click", () => {
         pausePlayback();
-        AppState.timeHour--;
-        if (AppState.timeHour < 0) {
-            AppState.timeHour = 23;
-            AppState.timeDay--;
-            if (AppState.timeDay < 1) {
-                AppState.timeMonth--;
-                if (AppState.timeMonth < 1) {
-                    AppState.timeMonth = 12;
-                    AppState.timeYear--;
-                }
-                const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
-                AppState.timeDay = maxDays;
+        if (AppState.timeMode === 'forecast') {
+            AppState.timeDayOffset--;
+            if (AppState.timeDayOffset < 0) {
+                AppState.timeDayOffset = 6;
             }
-            document.getElementById("cal-year").value = AppState.timeYear;
-            document.getElementById("cal-month").value = AppState.timeMonth;
-            populateCalendarDays();
-            document.getElementById("cal-day").value = AppState.timeDay;
+            updateTimeNavigationState();
+        } else {
+            AppState.timeHour--;
+            if (AppState.timeHour < 0) {
+                AppState.timeHour = 23;
+                AppState.timeDay--;
+                if (AppState.timeDay < 1) {
+                    AppState.timeMonth--;
+                    if (AppState.timeMonth < 1) {
+                        AppState.timeMonth = 12;
+                        AppState.timeYear--;
+                    }
+                    const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
+                    AppState.timeDay = maxDays;
+                }
+                document.getElementById("cal-year").value = AppState.timeYear;
+                document.getElementById("cal-month").value = AppState.timeMonth;
+                populateCalendarDays();
+                document.getElementById("cal-day").value = AppState.timeDay;
+            }
+            updateTimeNavigationState();
         }
-        updateTimeNavigationState();
     });
     
     document.getElementById("pb-next-btn")?.addEventListener("click", () => {
         pausePlayback();
-        AppState.timeHour++;
-        if (AppState.timeHour > 23) {
-            AppState.timeHour = 0;
-            AppState.timeDay++;
-            const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
-            if (AppState.timeDay > maxDays) {
-                AppState.timeDay = 1;
-                AppState.timeMonth++;
-                if (AppState.timeMonth > 12) {
-                    AppState.timeMonth = 1;
-                    AppState.timeYear++;
-                }
+        if (AppState.timeMode === 'forecast') {
+            AppState.timeDayOffset++;
+            if (AppState.timeDayOffset > 6) {
+                AppState.timeDayOffset = 0;
             }
-            document.getElementById("cal-year").value = AppState.timeYear;
-            document.getElementById("cal-month").value = AppState.timeMonth;
-            populateCalendarDays();
-            document.getElementById("cal-day").value = AppState.timeDay;
+            updateTimeNavigationState();
+        } else {
+            AppState.timeHour++;
+            if (AppState.timeHour > 23) {
+                AppState.timeHour = 0;
+                AppState.timeDay++;
+                const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
+                if (AppState.timeDay > maxDays) {
+                    AppState.timeDay = 1;
+                    AppState.timeMonth++;
+                    if (AppState.timeMonth > 12) {
+                        AppState.timeMonth = 1;
+                        AppState.timeYear++;
+                    }
+                }
+                document.getElementById("cal-year").value = AppState.timeYear;
+                document.getElementById("cal-month").value = AppState.timeMonth;
+                populateCalendarDays();
+                document.getElementById("cal-day").value = AppState.timeDay;
+            }
+            updateTimeNavigationState();
         }
-        updateTimeNavigationState();
     });
     
     document.querySelectorAll(".timeline-hour-dot").forEach(dot => {
         dot.addEventListener("click", () => {
             pausePlayback();
             AppState.timeHour = parseInt(dot.getAttribute("data-hour"));
+            updateTimeNavigationState();
+        });
+    });
+
+    document.querySelectorAll(".timeline-day-dot").forEach(dot => {
+        dot.addEventListener("click", () => {
+            pausePlayback();
+            AppState.timeDayOffset = parseInt(dot.getAttribute("data-day-index"));
             updateTimeNavigationState();
         });
     });
@@ -2099,45 +2146,121 @@ function initTimeNavigation() {
 }
 
 function updateTimeNavigationState() {
-    const yr = AppState.timeYear;
-    const mo = String(AppState.timeMonth).padStart(2, '0');
-    const dy = String(AppState.timeDay).padStart(2, '0');
-    const hr = String(AppState.timeHour).padStart(2, '0');
-    const dtStr = `${yr}-${mo}-${dy}T${hr}:00`;
-    
-    const activeDot = document.querySelector(`.timeline-hour-dot[data-hour="${AppState.timeHour}"]`);
-    const caret = document.getElementById("timeline-caret");
-    if (activeDot && caret) {
-        const rowContainer = activeDot.closest('.relative');
-        if (rowContainer) {
-            rowContainer.appendChild(caret);
-            caret.style.left = `${activeDot.offsetLeft + activeDot.offsetWidth / 2}px`;
-            caret.style.bottom = `-10px`;
-            caret.style.opacity = "1";
+    let dtStr;
+    const monthsAbbrev = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const daysAbbrev = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    if (AppState.timeMode === 'forecast') {
+        // Toggle visibility
+        document.getElementById("hourly-timeline-container")?.classList.add("hidden");
+        document.getElementById("daily-timeline-container")?.classList.remove("hidden");
+
+        // Calculate target date based on offset from selected start date
+        const startDate = new Date(AppState.timeYear, AppState.timeMonth - 1, AppState.timeDay);
+        const targetDate = new Date(startDate.getTime() + AppState.timeDayOffset * 24 * 60 * 60 * 1000);
+        
+        // Keep target details
+        const targetYear = targetDate.getFullYear();
+        const targetMonth = targetDate.getMonth() + 1;
+        const targetDay = targetDate.getDate();
+        const targetHour = 12; // default to noon for forecast daily views
+        
+        const yr = targetYear;
+        const mo = String(targetMonth).padStart(2, '0');
+        const dy = String(targetDay).padStart(2, '0');
+        const hr = String(targetHour).padStart(2, '0');
+        dtStr = `${yr}-${mo}-${dy}T${hr}:00`;
+
+        // Update day dots and caret
+        document.querySelectorAll(".timeline-day-dot").forEach((dot, idx) => {
+            const dotDate = new Date(startDate.getTime() + idx * 24 * 60 * 60 * 1000);
+            const dotName = idx === 0 ? "Today" : daysAbbrev[dotDate.getDay()];
+            const dotLabel = `${dotDate.getDate()} ${monthsAbbrev[dotDate.getMonth()]}`;
+            
+            const nameEl = dot.querySelector(".day-name");
+            if (nameEl) {
+                nameEl.innerText = `${dotName} (${dotLabel})`;
+            }
+            
+            const coreEl = dot.querySelector(".dot-core");
+            if (coreEl) {
+                coreEl.innerText = String(dotDate.getDate()).padStart(2, '0');
+            }
+            
+            dot.classList.remove("active", "passed");
+            if (idx === AppState.timeDayOffset) {
+                dot.classList.add("active");
+                
+                const caret = document.getElementById("timeline-caret-daily");
+                if (caret) {
+                    const rowContainer = dot.closest('.relative');
+                    if (rowContainer) {
+                        rowContainer.appendChild(caret);
+                        caret.style.left = `${dot.offsetLeft + dot.offsetWidth / 2}px`;
+                        caret.style.bottom = `-10px`;
+                        caret.style.opacity = "1";
+                    }
+                }
+            } else if (idx < AppState.timeDayOffset) {
+                dot.classList.add("passed");
+            }
+        });
+
+        const progressDaily = document.getElementById("timeline-progress-daily");
+        if (progressDaily) {
+            const pct = (AppState.timeDayOffset / 6) * 100;
+            progressDaily.style.width = `${pct}%`;
         }
-    }
-    
-    document.querySelectorAll(".timeline-hour-dot").forEach(dot => {
-        const dotHr = parseInt(dot.getAttribute("data-hour"));
-        dot.classList.remove("active", "passed");
-        if (dotHr === AppState.timeHour) {
-            dot.classList.add("active");
-        } else if (dotHr < AppState.timeHour) {
-            dot.classList.add("passed");
+
+        const dtDisp = document.getElementById("active-datetime-display");
+        if (dtDisp) {
+            dtDisp.innerText = `${AppState.timeDay} ${monthsAbbrev[AppState.timeMonth - 1]} ${AppState.timeYear}, Daily Forecast`;
         }
-    });
-    
-    const progressRow1 = document.getElementById("timeline-progress-row1");
-    const progressRow2 = document.getElementById("timeline-progress-row2");
-    
-    if (AppState.timeHour <= 11) {
-        const pct = (AppState.timeHour / 11) * 100;
-        if (progressRow1) progressRow1.style.width = `${pct}%`;
-        if (progressRow2) progressRow2.style.width = `0%`;
     } else {
-        if (progressRow1) progressRow1.style.width = `100%`;
-        const pct = ((AppState.timeHour - 12) / 11) * 100;
-        if (progressRow2) progressRow2.style.width = `${pct}%`;
+        // Toggle visibility
+        document.getElementById("daily-timeline-container")?.classList.add("hidden");
+        document.getElementById("hourly-timeline-container")?.classList.remove("hidden");
+
+        const yr = AppState.timeYear;
+        const mo = String(AppState.timeMonth).padStart(2, '0');
+        const dy = String(AppState.timeDay).padStart(2, '0');
+        const hr = String(AppState.timeHour).padStart(2, '0');
+        dtStr = `${yr}-${mo}-${dy}T${hr}:00`;
+        
+        const activeDot = document.querySelector(`.timeline-hour-dot[data-hour="${AppState.timeHour}"]`);
+        const caret = document.getElementById("timeline-caret");
+        if (activeDot && caret) {
+            const rowContainer = activeDot.closest('.relative');
+            if (rowContainer) {
+                rowContainer.appendChild(caret);
+                caret.style.left = `${activeDot.offsetLeft + activeDot.offsetWidth / 2}px`;
+                caret.style.bottom = `-10px`;
+                caret.style.opacity = "1";
+            }
+        }
+        
+        document.querySelectorAll(".timeline-hour-dot").forEach(dot => {
+            const dotHr = parseInt(dot.getAttribute("data-hour"));
+            dot.classList.remove("active", "passed");
+            if (dotHr === AppState.timeHour) {
+                dot.classList.add("active");
+            } else if (dotHr < AppState.timeHour) {
+                dot.classList.add("passed");
+            }
+        });
+        
+        const progressRow1 = document.getElementById("timeline-progress-row1");
+        const progressRow2 = document.getElementById("timeline-progress-row2");
+        
+        if (AppState.timeHour <= 11) {
+            const pct = (AppState.timeHour / 11) * 100;
+            if (progressRow1) progressRow1.style.width = `${pct}%`;
+            if (progressRow2) progressRow2.style.width = `0%`;
+        } else {
+            if (progressRow1) progressRow1.style.width = `100%`;
+            const pct = ((AppState.timeHour - 12) / 11) * 100;
+            if (progressRow2) progressRow2.style.width = `${pct}%`;
+        }
     }
     
     return fetchTimeNavigationData(dtStr, AppState.timeMode);
@@ -2169,23 +2292,40 @@ async function fetchTimeNavigationData(dtStr, modeVal) {
         AppState.backendDistricts = data.districts;
         
         const parsedDate = new Date(data.date);
-        AppState.timeYear = parsedDate.getFullYear();
-        AppState.timeMonth = parsedDate.getMonth() + 1;
-        AppState.timeDay = parsedDate.getDate();
-        AppState.timeHour = data.hour;
-        
-        document.getElementById("cal-year").value = AppState.timeYear;
-        document.getElementById("cal-month").value = AppState.timeMonth;
-        populateCalendarDays();
-        document.getElementById("cal-day").value = AppState.timeDay;
-        
         const monthsAbbrev = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         const dtDisp = document.getElementById("active-datetime-display");
-        if (dtDisp) {
-            const displayHour = AppState.timeHour === 0 ? "12:00 AM" : 
-                                AppState.timeHour === 12 ? "12:00 PM" : 
-                                AppState.timeHour > 12 ? `${AppState.timeHour - 12}:00 PM` : `${AppState.timeHour}:00 AM`;
-            dtDisp.innerText = `${AppState.timeDay} ${monthsAbbrev[AppState.timeMonth - 1]} ${AppState.timeYear}, ${displayHour} IST`;
+        
+        if (modeVal === 'forecast') {
+            // Keep AppState and selectors as the selected start date!
+            // Only update active display label to show the current active forecast day
+            if (dtDisp) {
+                dtDisp.innerText = `${parsedDate.getDate()} ${monthsAbbrev[parsedDate.getMonth()]} ${parsedDate.getFullYear()}, Daily Forecast`;
+            }
+        } else {
+            AppState.timeYear = parsedDate.getFullYear();
+            AppState.timeMonth = parsedDate.getMonth() + 1;
+            AppState.timeDay = parsedDate.getDate();
+            
+            // Only update hour if not in forecast mode (since we stub it to 12)
+            AppState.timeHour = data.hour;
+            
+            document.getElementById("cal-year").value = AppState.timeYear;
+            document.getElementById("cal-month").value = AppState.timeMonth;
+            populateCalendarDays();
+            document.getElementById("cal-day").value = AppState.timeDay;
+            
+            if (dtDisp) {
+                const displayHour = AppState.timeHour === 0 ? "12:00 AM" : 
+                                    AppState.timeHour === 12 ? "12:00 PM" : 
+                                    AppState.timeHour > 12 ? `${AppState.timeHour - 12}:00 PM` : `${AppState.timeHour}:00 AM`;
+                dtDisp.innerText = `${AppState.timeDay} ${monthsAbbrev[AppState.timeMonth - 1]} ${AppState.timeYear}, ${displayHour} IST`;
+            }
+        }
+        
+        // Also update the active simulation date indicator in the simulator panel
+        const simDateEl = document.getElementById("simulator-active-date");
+        if (simDateEl) {
+            simDateEl.innerText = `${parsedDate.getDate()} ${monthsAbbrev[parsedDate.getMonth()]} ${parsedDate.getFullYear()}`;
         }
         
         animateValue('kpi-temp', data.metrics.temperature, ' °C');
@@ -2906,23 +3046,30 @@ function resetPlayback() {
 async function runPlaybackCycle() {
     if (!AppState.playback.isPlaying) return;
     
-    AppState.timeHour++;
-    if (AppState.timeHour > 23) {
-        AppState.timeHour = 0;
-        AppState.timeDay++;
-        const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
-        if (AppState.timeDay > maxDays) {
-            AppState.timeDay = 1;
-            AppState.timeMonth++;
-            if (AppState.timeMonth > 12) {
-                AppState.timeMonth = 1;
-                AppState.timeYear++;
-            }
+    if (AppState.timeMode === 'forecast') {
+        AppState.timeDayOffset++;
+        if (AppState.timeDayOffset > 6) {
+            AppState.timeDayOffset = 0;
         }
-        document.getElementById("cal-year").value = AppState.timeYear;
-        document.getElementById("cal-month").value = AppState.timeMonth;
-        populateCalendarDays();
-        document.getElementById("cal-day").value = AppState.timeDay;
+    } else {
+        AppState.timeHour++;
+        if (AppState.timeHour > 23) {
+            AppState.timeHour = 0;
+            AppState.timeDay++;
+            const maxDays = new Date(AppState.timeYear, AppState.timeMonth, 0).getDate();
+            if (AppState.timeDay > maxDays) {
+                AppState.timeDay = 1;
+                AppState.timeMonth++;
+                if (AppState.timeMonth > 12) {
+                    AppState.timeMonth = 1;
+                    AppState.timeYear++;
+                }
+            }
+            document.getElementById("cal-year").value = AppState.timeYear;
+            document.getElementById("cal-month").value = AppState.timeMonth;
+            populateCalendarDays();
+            document.getElementById("cal-day").value = AppState.timeDay;
+        }
     }
     
     const startTime = Date.now();

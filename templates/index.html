@@ -281,7 +281,7 @@
         </div>
 
         <!-- BOTTOM ROW: 24-Hour dual row timeline -->
-        <div class="flex flex-col gap-3 relative w-full px-2 pt-1">
+        <div id="hourly-timeline-container" class="flex flex-col gap-3 relative w-full px-2 pt-1">
             <!-- Row 1: 00 - 11 -->
             <div class="flex items-center justify-between relative">
                 <!-- Row Line -->
@@ -381,6 +381,52 @@
 
             <!-- Indication Caret (Floating overlay positioning managed via JS) -->
             <div id="timeline-caret" class="absolute z-20 text-cyan-400 pointer-events-none transition-all duration-300" style="left: 0; bottom: -8px; transform: translateX(-50%); opacity: 0;">
+                <i data-lucide="chevron-up" class="w-4 h-4 fill-cyan-400 filter drop-shadow"></i>
+            </div>
+        </div>
+
+        <!-- BOTTOM ROW (Alternate): 7-Day Forecast timeline -->
+        <div id="daily-timeline-container" class="hidden flex flex-col gap-3 relative w-full px-2 pt-1.5 pb-2">
+            <div class="flex items-center justify-between relative">
+                <!-- Row Line -->
+                <div class="absolute left-6 right-6 top-[26px] h-[1px] bg-slate-800/80 z-0"></div>
+                <!-- Progress Line -->
+                <div id="timeline-progress-daily" class="absolute left-6 top-[26px] h-[1.5px] bg-cyan-500/80 z-0 transition-all duration-300" style="width: 0%;"></div>
+                
+                <!-- Day Dots -->
+                <div class="z-10 flex justify-between w-full px-3">
+                    <span data-day-index="0" class="timeline-day-dot flex flex-col items-center gap-1 cursor-pointer w-16">
+                        <span class="day-name text-[9px] text-slate-500 font-bold mb-0.5">Today</span>
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">D1</span>
+                    </span>
+                    <span data-day-index="1" class="timeline-day-dot flex flex-col items-center gap-1 cursor-pointer w-16">
+                        <span class="day-name text-[9px] text-slate-500 font-bold mb-0.5">Day 2</span>
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">D2</span>
+                    </span>
+                    <span data-day-index="2" class="timeline-day-dot flex flex-col items-center gap-1 cursor-pointer w-16">
+                        <span class="day-name text-[9px] text-slate-500 font-bold mb-0.5">Day 3</span>
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">D3</span>
+                    </span>
+                    <span data-day-index="3" class="timeline-day-dot flex flex-col items-center gap-1 cursor-pointer w-16">
+                        <span class="day-name text-[9px] text-slate-500 font-bold mb-0.5">Day 4</span>
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">D4</span>
+                    </span>
+                    <span data-day-index="4" class="timeline-day-dot flex flex-col items-center gap-1 cursor-pointer w-16">
+                        <span class="day-name text-[9px] text-slate-500 font-bold mb-0.5">Day 5</span>
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">D5</span>
+                    </span>
+                    <span data-day-index="5" class="timeline-day-dot flex flex-col items-center gap-1 cursor-pointer w-16">
+                        <span class="day-name text-[9px] text-slate-500 font-bold mb-0.5">Day 6</span>
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">D6</span>
+                    </span>
+                    <span data-day-index="6" class="timeline-day-dot flex flex-col items-center gap-1 cursor-pointer w-16">
+                        <span class="day-name text-[9px] text-slate-500 font-bold mb-0.5">Day 7</span>
+                        <span class="dot-core w-5 h-5 rounded-full bg-navy-950 border border-slate-700 flex items-center justify-center text-[8px] font-black text-slate-500 transition-all">D7</span>
+                    </span>
+                </div>
+            </div>
+            <!-- Indication Caret for Daily Timeline -->
+            <div id="timeline-caret-daily" class="absolute z-20 text-cyan-400 pointer-events-none transition-all duration-300" style="left: 0; bottom: -8px; transform: translateX(-50%); opacity: 0;">
                 <i data-lucide="chevron-up" class="w-4 h-4 fill-cyan-400 filter drop-shadow"></i>
             </div>
         </div>
@@ -797,6 +843,15 @@
                     <i data-lucide="sliders" class="w-4.5 h-4.5 text-cyan-400"></i>
                 </div>
                 <p class="text-[11px] text-slate-400">Alter key climate variables to simulate environmental shifts and compute immediate hazard risk factors.</p>
+
+                <!-- Active Date Indicator for Scenario Simulator -->
+                <div class="flex items-center gap-2 bg-navy-950/40 p-2 rounded-lg border border-slate-800/80 mb-1">
+                    <i data-lucide="calendar" class="w-4 h-4 text-cyan-400"></i>
+                    <div class="flex flex-col">
+                        <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Active Simulation Date</span>
+                        <span id="simulator-active-date" class="text-xs font-semibold text-slate-200">-</span>
+                    </div>
+                </div>
 
                 <!-- Temperature Slider -->
                 <div class="flex flex-col gap-1.5">

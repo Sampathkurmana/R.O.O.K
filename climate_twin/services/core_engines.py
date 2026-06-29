@@ -224,13 +224,15 @@ class PredictionEngine:
         return predictions
 
     @classmethod
-    def predict_next_week(cls, lat: float, lng: float, district: Optional[District] = None) -> List[ClimatePrediction]:
+    def predict_next_week(cls, lat: float, lng: float, district: Optional[District] = None, start_date: Optional[datetime.date] = None) -> List[ClimatePrediction]:
         """
         Predicts variables for the next seven days.
         """
+        if not start_date:
+            start_date = datetime.date.today()
         predictions = []
         for i in range(1, 8):
-            target_date = datetime.date.today() + datetime.timedelta(days=i)
+            target_date = start_date + datetime.timedelta(days=i)
             pred_data = cls._get_forecast_point(lat, lng, target_date, "7-day")
             predictions.append(cls._store_prediction(pred_data, district))
         return predictions
