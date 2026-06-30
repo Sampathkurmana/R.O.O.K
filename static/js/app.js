@@ -1078,7 +1078,7 @@ function switchPanel(panelName) {
         }
     }
 
-    // Toggle Leaflet Map vs Cesium space globe containers
+    // Toggle Leaflet Map vs Cesium space globe containers vs full-screen Analytics Dashboard
     const mapContainerEl = document.getElementById("map-container");
     const satGlobeContainerEl = document.getElementById("satellite-globe-container");
     
@@ -1092,6 +1092,9 @@ function switchPanel(panelName) {
                 if (globeViewer) globeViewer.resize();
             }, 60);
         }
+    } else if (panelName === 'analytics') {
+        if (mapContainerEl) mapContainerEl.classList.add("hidden");
+        if (satGlobeContainerEl) satGlobeContainerEl.classList.add("hidden");
     } else {
         if (satGlobeContainerEl) satGlobeContainerEl.classList.add("hidden");
         if (mapContainerEl) mapContainerEl.classList.remove("hidden");
@@ -1120,9 +1123,9 @@ function switchPanel(panelName) {
             dashboardWidgets.style.display = "none";
         }
 
-        // Show right panel container (except on satellite view)
+        // Show right panel container (except on satellite view and analytics dashboard)
         if (rightPanelContainer) {
-            if (panelName === 'satellite') {
+            if (['satellite', 'analytics'].includes(panelName)) {
                 rightPanelContainer.classList.add("hidden");
             } else {
                 rightPanelContainer.classList.remove("hidden");
@@ -1140,7 +1143,7 @@ function switchPanel(panelName) {
 
         // Keep legend on weather/analytics (except on satellite view)
         if (mapLegend) {
-            if (['weather', 'digital-twin', 'analytics'].includes(panelName)) {
+            if (['weather', 'digital-twin', 'climate-intel'].includes(panelName)) {
                 mapLegend.classList.remove("hidden");
             } else {
                 mapLegend.classList.add("hidden");
@@ -1176,10 +1179,12 @@ function switchPanel(panelName) {
             }
         }
 
-        // Re-initialize/resize ApexCharts on Analytics panel activation to recalculate widths
+        // Trigger loading the active dashboard view or charts on Analytics activation
         if (panelName === 'analytics') {
             setTimeout(() => {
-                initCharts();
+                if (window.CIC && typeof window.CIC.onDashboardOpen === 'function') {
+                    window.CIC.onDashboardOpen();
+                }
             }, 100);
         }
     }
@@ -1227,11 +1232,16 @@ function fetchWeatherData() {
             document.getElementById("kpi-wind-dir").innerText = data.current.wind_direction;
 
             // Update Analytics Current Conditions defaults
-            document.getElementById("current-cond-rain").innerText = data.current.rainfall + " mm";
-            document.getElementById("current-cond-temp-max").innerText = "33.1 °C";
-            document.getElementById("current-cond-temp-min").innerText = "25.6 °C";
-            document.getElementById("current-cond-humidity").innerText = data.current.humidity + "%";
+            const ccRain = document.getElementById("current-cond-rain");
+            const ccTmax = document.getElementById("current-cond-temp-max");
+            const ccTmin = document.getElementById("current-cond-temp-min");
+            const ccHum = document.getElementById("current-cond-humidity");
             const windEl = document.getElementById("current-cond-wind");
+
+            if (ccRain) ccRain.innerText = data.current.rainfall + " mm";
+            if (ccTmax) ccTmax.innerText = "33.1 °C";
+            if (ccTmin) ccTmin.innerText = "25.6 °C";
+            if (ccHum) ccHum.innerText = data.current.humidity + "%";
             if (windEl) {
                 windEl.innerHTML = `${data.current.wind_speed} kt <span class="text-[9px] text-cyan-400 font-normal">${data.current.wind_direction}</span>`;
             }
@@ -1925,11 +1935,14 @@ function initCharts() {
                 legend: { show: false } // Disable legend to save space, matching DT.png
             };
 
-            if (AppState.charts.trends) {
-                AppState.charts.trends.destroy();
+            const trendsEl = document.querySelector("#chart-trends");
+            if (trendsEl) {
+                if (AppState.charts.trends) {
+                    AppState.charts.trends.destroy();
+                }
+                AppState.charts.trends = new ApexCharts(trendsEl, trendOptions);
+                AppState.charts.trends.render();
             }
-            AppState.charts.trends = new ApexCharts(document.querySelector("#chart-trends"), trendOptions);
-            AppState.charts.trends.render();
 
             // Hourly Chart
             const hourlyTime = data.hourly.filter((h, idx) => idx % 3 === 0).map(h => h.time);
@@ -1961,11 +1974,14 @@ function initCharts() {
                 dataLabels: { enabled: false }
             };
 
-            if (AppState.charts.hourly) {
-                AppState.charts.hourly.destroy();
+            const hourlyEl = document.querySelector("#chart-hourly");
+            if (hourlyEl) {
+                if (AppState.charts.hourly) {
+                    AppState.charts.hourly.destroy();
+                }
+                AppState.charts.hourly = new ApexCharts(hourlyEl, hourlyOptions);
+                AppState.charts.hourly.render();
             }
-            AppState.charts.hourly = new ApexCharts(document.querySelector("#chart-hourly"), hourlyOptions);
-            AppState.charts.hourly.render();
         });
 }
 
@@ -4205,3 +4221,1558 @@ function updateSatTimelineText() {
     const txtEl = document.getElementById("sat-pb-time-text");
     if (txtEl) txtEl.innerText = dateText;
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIMATE INTELLIGENCE CENTER (CIC) – JavaScript Module
+// Connects all 10 tabs to the 7 new /api/climate/ backend endpoints
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const CIC = (function () {
+    'use strict';
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let _cache = {};           // key: `${tab}:${lat}:${lng}`
+    let _activeDelta = 'vs_yesterday';
+    let _activeHorizon = '24h';
+    let _currentTab = 'snapshot';
+    let _cicCharts = {};       // ApexCharts instances keyed by chart div id
+    let _snapshotData = null;  // last fetched snapshot payload
+    let _isOpen = false;
+
+    // ── Snapshot variable definitions ─────────────────────────────────────
+    const SNAPSHOT_VARS = [
+        { key: 'temperature',     label: 'Temperature',    unit: '°C',     icon: 'thermometer',    color: 'text-orange-400', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
+        { key: 'temp_max',        label: 'Max Temp',       unit: '°C',     icon: 'flame',          color: 'text-red-400',    bg: 'bg-red-500/10',    border: 'border-red-500/20' },
+        { key: 'temp_min',        label: 'Min Temp',       unit: '°C',     icon: 'snowflake',      color: 'text-sky-400',    bg: 'bg-sky-500/10',    border: 'border-sky-500/20' },
+        { key: 'rainfall',        label: 'Rainfall',       unit: ' mm',    icon: 'cloud-rain',     color: 'text-blue-400',   bg: 'bg-blue-500/10',   border: 'border-blue-500/20' },
+        { key: 'humidity',        label: 'Humidity',       unit: '%',      icon: 'droplet',        color: 'text-teal-400',   bg: 'bg-teal-500/10',   border: 'border-teal-500/20' },
+        { key: 'pressure',        label: 'Pressure',       unit: ' hPa',   icon: 'gauge',          color: 'text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+        { key: 'wind_speed',      label: 'Wind Speed',     unit: ' kt',    icon: 'wind',           color: 'text-cyan-400',   bg: 'bg-cyan-500/10',   border: 'border-cyan-500/20' },
+        { key: 'wind_direction',  label: 'Wind Dir',       unit: '',       icon: 'compass',        color: 'text-slate-300',  bg: 'bg-slate-800/40',  border: 'border-slate-700/30' },
+        { key: 'lst',             label: 'LST',            unit: '°C',     icon: 'sun',            color: 'text-rose-400',   bg: 'bg-rose-500/10',   border: 'border-rose-500/20' },
+        { key: 'sst',             label: 'SST',            unit: '°C',     icon: 'waves',          color: 'text-indigo-400', bg: 'bg-indigo-500/10', border: 'border-indigo-500/20' },
+        { key: 'cloud_cover',     label: 'Cloud Cover',    unit: '%',      icon: 'cloud',          color: 'text-slate-300',  bg: 'bg-slate-800/40',  border: 'border-slate-700/30' },
+        { key: 'visibility',      label: 'Visibility',     unit: ' km',    icon: 'eye',            color: 'text-emerald-400',bg: 'bg-emerald-500/10',border: 'border-emerald-500/20' },
+    ];
+
+    const RISK_VARS = [
+        { key: 'heatwave_risk', label: 'Heatwave',   icon: 'flame',          colors: { Low: 'text-slate-400 bg-slate-800 border-slate-700', Medium: 'text-amber-400 bg-amber-950/30 border-amber-500/30', High: 'text-orange-400 bg-orange-950/30 border-orange-500/30', Critical: 'text-red-400 bg-red-950/30 border-red-500/40' } },
+        { key: 'flood_risk',    label: 'Flood',      icon: 'waves',          colors: { Low: 'text-slate-400 bg-slate-800 border-slate-700', Medium: 'text-cyan-400 bg-cyan-950/30 border-cyan-500/30',   High: 'text-blue-400 bg-blue-950/30 border-blue-500/30',     Critical: 'text-indigo-400 bg-indigo-950/30 border-indigo-500/40' } },
+        { key: 'cyclone_risk',  label: 'Cyclone',    icon: 'wind',           colors: { Low: 'text-slate-400 bg-slate-800 border-slate-700', Medium: 'text-purple-400 bg-purple-950/30 border-purple-500/30', High: 'text-rose-400 bg-rose-950/30 border-rose-500/30', Critical: 'text-red-400 bg-red-950/30 border-red-500/40 animate-pulse' } },
+        { key: 'drought_risk',  label: 'Drought',    icon: 'sun',            colors: { Low: 'text-slate-400 bg-slate-800 border-slate-700', Medium: 'text-yellow-400 bg-yellow-950/30 border-yellow-500/30', High: 'text-orange-400 bg-orange-950/30 border-orange-500/30', Critical: 'text-red-400 bg-red-950/30 border-red-500/40' } },
+        { key: 'agriculture_risk', label: 'Agriculture', icon: 'wheat',      colors: { Low: 'text-slate-400 bg-slate-800 border-slate-700', Medium: 'text-lime-400 bg-lime-950/30 border-lime-500/30',  High: 'text-amber-400 bg-amber-950/30 border-amber-500/30', Critical: 'text-red-400 bg-red-950/30 border-red-500/40' } },
+        { key: 'urban_heat',    label: 'Urban Heat', icon: 'building-2',     colors: { Low: 'text-slate-400 bg-slate-800 border-slate-700', Medium: 'text-orange-400 bg-orange-950/30 border-orange-500/30', High: 'text-rose-400 bg-rose-950/30 border-rose-500/30', Critical: 'text-red-400 bg-red-950/30 border-red-500/40' } },
+    ];
+
+    const SCENARIO_PRESETS = {
+        heatwave:    { temp_delta: 4.5,  rain_delta: -40, humidity_change: -10, scenario_category: 'heatwave' },
+        coldwave:    { temp_delta: -5.0, rain_delta: 0,   humidity_change: 5,   scenario_category: '' },
+        flood:       { temp_delta: 0,    rain_delta: 200, humidity_change: 15,  scenario_category: 'flood' },
+        heavyrain:   { temp_delta: -0.5, rain_delta: 120, humidity_change: 10,  scenario_category: 'flood' },
+        cyclone:     { temp_delta: 1.0,  rain_delta: 150, humidity_change: 15,  scenario_category: 'cyclone' },
+        drought:     { temp_delta: 3.0,  rain_delta: -75, humidity_change: -15, scenario_category: 'drought' },
+        monsoondelay:{ temp_delta: 2.5,  rain_delta: -50, humidity_change: -8,  scenario_category: 'drought' },
+        monsoonadv:  { temp_delta: -1.0, rain_delta: 60,  humidity_change: 12,  scenario_category: 'flood' },
+        marine:      { temp_delta: 1.5,  rain_delta: 30,  humidity_change: 8,   scenario_category: '' },
+        uhi:         { temp_delta: 3.5,  rain_delta: -10, humidity_change: -5,  scenario_category: 'heatwave' },
+    };
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    function _cacheKey(tab, lat, lng) {
+        return `${tab}:${lat.toFixed(3)}:${lng.toFixed(3)}`;
+    }
+
+    function _getLat() { return AppState.selectedLat || 15.9129; }
+    function _getLng() { return AppState.selectedLng || 79.7400; }
+
+    function _deltaColor(val) {
+        if (val === null || val === undefined) return 'text-slate-500';
+        return val > 0 ? 'text-rose-400' : val < 0 ? 'text-emerald-400' : 'text-slate-500';
+    }
+
+    function _deltaStr(val, unit) {
+        if (val === null || val === undefined) return '—';
+        const sign = val > 0 ? '+' : '';
+        return `${sign}${val}${unit || ''}`;
+    }
+
+    function _severityColor(level) {
+        const m = { Low: 'text-emerald-400', Medium: 'text-amber-400', High: 'text-orange-400', Critical: 'text-rose-400' };
+        return m[level] || 'text-slate-400';
+    }
+
+    function _severityBg(level) {
+        const m = { Low: 'bg-emerald-500/10 border-emerald-500/20', Medium: 'bg-amber-500/10 border-amber-500/20', High: 'bg-orange-500/10 border-orange-500/20', Critical: 'bg-rose-500/10 border-rose-500/30' };
+        return m[level] || 'bg-slate-800/40 border-slate-700/30';
+    }
+
+    function _destroyChart(id) {
+        if (_cicCharts[id]) { try { _cicCharts[id].destroy(); } catch(e){} delete _cicCharts[id]; }
+    }
+
+    function _baseChartOptions(dark = true) {
+        return {
+            chart: { background: 'transparent', toolbar: { show: false }, animations: { enabled: true, easing: 'easeinout', speed: 600 } },
+            theme: { mode: 'dark' },
+            grid: { borderColor: 'rgba(100,116,139,0.12)', xaxis: { lines: { show: false } }, yaxis: { lines: { show: true } } },
+            tooltip: { theme: 'dark', style: { fontSize: '10px' } },
+            xaxis: { labels: { style: { colors: '#94a3b8', fontSize: '9px' }, rotate: 0 }, axisBorder: { show: false }, axisTicks: { show: false } },
+            yaxis: { labels: { style: { colors: '#94a3b8', fontSize: '9px' } } },
+            legend: { labels: { colors: '#cbd5e1' }, fontSize: '10px' },
+        };
+    }
+
+    // ── API fetch wrappers ─────────────────────────────────────────────────
+    async function _fetchSnapshot(lat, lng) {
+        const r = await fetch(`/api/climate/snapshot/?lat=${lat}&lng=${lng}`);
+        if (!r.ok) throw new Error('Snapshot fetch failed');
+        return r.json();
+    }
+
+    async function _fetchTrends(variable, period, lat, lng) {
+        const r = await fetch(`/api/climate/trends/?variable=${variable}&period=${period}&lat=${lat}&lng=${lng}`);
+        if (!r.ok) throw new Error('Trends fetch failed');
+        return r.json();
+    }
+
+    async function _fetchForecast(lat, lng) {
+        const r = await fetch(`/api/forecast/?lat=${lat}&lng=${lng}`);
+        if (!r.ok) throw new Error('Forecast fetch failed');
+        return r.json();
+    }
+
+    async function _fetchRisk(lat, lng) {
+        const r = await fetch(`/api/risk/?lat=${lat}&lng=${lng}`);
+        if (!r.ok) throw new Error('Risk fetch failed');
+        return r.json();
+    }
+
+    async function _fetchAnomalies(lat, lng) {
+        const r = await fetch(`/api/climate/anomalies/?lat=${lat}&lng=${lng}`);
+        if (!r.ok) throw new Error('Anomalies fetch failed');
+        return r.json();
+    }
+
+    async function _fetchInsights(lat, lng) {
+        const r = await fetch(`/api/climate/insights/?lat=${lat}&lng=${lng}`);
+        if (!r.ok) throw new Error('Insights fetch failed');
+        return r.json();
+    }
+
+    async function _fetchStory(lat, lng) {
+        const r = await fetch(`/api/climate/story/?lat=${lat}&lng=${lng}`);
+        if (!r.ok) throw new Error('Story fetch failed');
+        return r.json();
+    }
+
+    async function _fetchComparison(d1, d2) {
+        const r = await fetch(`/api/climate/comparison/?d1=${encodeURIComponent(d1)}&d2=${encodeURIComponent(d2)}`);
+        if (!r.ok) throw new Error('Comparison fetch failed');
+        return r.json();
+    }
+
+    async function _fetchTwinStatus() {
+        const r = await fetch(`/api/climate/twin-status/`);
+        if (!r.ok) throw new Error('Twin status fetch failed');
+        return r.json();
+    }
+
+    async function _fetchSimulate(preset, lat, lng, customParams = null) {
+        let bodyObj = {
+            lat,
+            lng,
+            scenario_category: preset || 'Custom'
+        };
+
+        if (customParams) {
+            bodyObj = { ...bodyObj, ...customParams };
+        } else {
+            const cfg = SCENARIO_PRESETS[preset] || {};
+            bodyObj.temp_delta = cfg.temp_delta || 0;
+            bodyObj.rain_delta = cfg.rain_delta || 0;
+            bodyObj.humidity_change = cfg.humidity_change || 0;
+            bodyObj.wind_change = 0;
+            bodyObj.pressure_change = 0;
+        }
+
+        const r = await fetch('/api/predict-simulate/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(bodyObj)
+        });
+        if (!r.ok) throw new Error('Simulation fetch failed');
+        return r.json();
+    }
+
+    // ── TAB: Snapshot ─────────────────────────────────────────────────────
+    async function loadSnapshot() {
+        const lat = _getLat(), lng = _getLng();
+        const ck = _cacheKey('snapshot', lat, lng);
+
+        let data = _cache[ck];
+        if (!data) {
+            document.getElementById('cic-snapshot-grid').innerHTML = `<div class="col-span-2 py-6 text-center text-slate-500 text-xs animate-pulse">Fetching snapshot data...</div>`;
+            data = await _fetchSnapshot(lat, lng);
+            _cache[ck] = data;
+        }
+        _snapshotData = data;
+
+        // Update location badge
+        const badge = document.getElementById('cic-location-badge');
+        if (badge) badge.textContent = data.location || 'Andhra Pradesh';
+
+        _renderSnapshotGrid(data, _activeDelta);
+
+        const srcEl = document.getElementById('cic-snapshot-source');
+        const timeEl = document.getElementById('cic-snapshot-time');
+        if (srcEl) srcEl.textContent = `Source: ${(data.source || '').replace('_', ' ').toUpperCase()}`;
+        if (timeEl) timeEl.textContent = data.timestamp ? new Date(data.timestamp).toLocaleTimeString('en-IN') + ' UTC' : '—';
+    }
+
+    function _renderSnapshotGrid(data, deltaKey) {
+        const grid = document.getElementById('cic-snapshot-grid');
+        if (!grid || !data) return;
+        const snap = data.snapshot || {};
+        const deltas = (data.deltas || {})[deltaKey] || {};
+
+        let html = '';
+        SNAPSHOT_VARS.forEach(v => {
+            const val = snap[v.key];
+            const deltaVal = deltas[v.key];
+            const displayVal = val !== undefined && val !== null ? `${val}${v.unit}` : '—';
+            const dStr = _deltaStr(deltaVal, v.unit.trim() ? v.unit : '');
+            const dColor = _deltaColor(deltaVal);
+
+            html += `
+            <div class="bg-navy-950/40 border ${v.border} rounded-lg p-2.5 flex flex-col gap-0.5 relative overflow-hidden">
+                <div class="flex items-center gap-1.5 mb-0.5">
+                    <div class="w-5 h-5 rounded ${v.bg} flex items-center justify-center">
+                        <i data-lucide="${v.icon}" class="w-2.5 h-2.5 ${v.color}"></i>
+                    </div>
+                    <span class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">${v.label}</span>
+                </div>
+                <span class="text-sm font-black font-display ${v.color}">${displayVal}</span>
+                <span class="text-[9px] font-bold ${dColor}">${dStr !== '—' ? dStr : '<span class="text-slate-600">no change data</span>'}</span>
+            </div>`;
+        });
+        grid.innerHTML = html;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    // ── TAB: Observation Analytics ────────────────────────────────────────
+    async function loadObservation(forceRefresh = false) {
+        const lat = _getLat(), lng = _getLng();
+        const variable = document.getElementById('cic-obs-variable')?.value || 'temperature';
+        const period = document.getElementById('cic-obs-period')?.value || 'daily';
+        const ck = _cacheKey(`obs:${variable}:${period}`, lat, lng);
+
+        let data = forceRefresh ? null : _cache[ck];
+        if (!data) {
+            document.getElementById('cic-obs-chart').innerHTML = `<div class="flex items-center justify-center h-full text-xs text-slate-500 animate-pulse">Loading chart...</div>`;
+            data = await _fetchTrends(variable, period, lat, lng);
+            _cache[ck] = data;
+        }
+
+        _destroyChart('cic-obs-chart');
+        const chartEl = document.getElementById('cic-obs-chart');
+        chartEl.innerHTML = '';
+
+        const colors = { temperature: '#f97316', rainfall: '#3b82f6', humidity: '#14b8a6', wind: '#22d3ee', pressure: '#a855f7', lst: '#f43f5e', sst: '#6366f1' };
+        const color = colors[variable] || '#22d3ee';
+
+        const opts = {
+            ..._baseChartOptions(),
+            chart: { ..._baseChartOptions().chart, type: 'area', height: 200, id: 'obs-chart' },
+            series: [{ name: variable.charAt(0).toUpperCase() + variable.slice(1), data: data.values || [] }],
+            xaxis: { ..._baseChartOptions().xaxis, categories: data.labels || [], tickAmount: 6 },
+            colors: [color],
+            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.05, stops: [0, 100] } },
+            stroke: { curve: 'smooth', width: 2 },
+            dataLabels: { enabled: false },
+            markers: { size: 0, hover: { size: 4 } },
+            yaxis: { ..._baseChartOptions().yaxis, labels: { ..._baseChartOptions().yaxis.labels, formatter: v => `${v} ${data.unit || ''}` } },
+        };
+
+        if (data.forecast_values && data.forecast_values.length) {
+            const forecastLabels = Array.from({ length: data.forecast_values.length }, (_, i) => `+${i + 1}d`);
+            opts.series.push({ name: 'Forecast', data: [...Array(data.values.length).fill(null), ...data.forecast_values] });
+            opts.xaxis.categories = [...(data.labels || []), ...forecastLabels];
+            opts.colors.push('#22d3ee');
+            opts.stroke.dashArray = [0, 5];
+        }
+
+        _cicCharts['cic-obs-chart'] = new ApexCharts(chartEl, opts);
+        _cicCharts['cic-obs-chart'].render();
+
+        // Summary
+        const sumEl = document.getElementById('cic-obs-summary');
+        if (sumEl && data.values && data.values.length) {
+            const avg = (data.values.reduce((a, b) => a + b, 0) / data.values.length).toFixed(1);
+            const max = Math.max(...data.values).toFixed(1);
+            const min = Math.min(...data.values).toFixed(1);
+            sumEl.innerHTML = `<strong class="text-slate-200">${variable.charAt(0).toUpperCase() + variable.slice(1)} (${data.period})</strong> for ${data.district}: Avg <strong class="text-white">${avg}${data.unit}</strong>, Max <strong class="text-rose-400">${max}${data.unit}</strong>, Min <strong class="text-emerald-400">${min}${data.unit}</strong>.`;
+            sumEl.classList.remove('hidden');
+        }
+    }
+
+    // ── TAB: Prediction Analytics ─────────────────────────────────────────
+    async function loadPrediction() {
+        const lat = _getLat(), lng = _getLng();
+        const ck = _cacheKey('prediction', lat, lng);
+
+        let data = _cache[ck];
+        if (!data) {
+            data = await _fetchForecast(lat, lng);
+            _cache[ck] = data;
+        }
+
+        // Confidence
+        const confEl = document.getElementById('cic-pred-confidence');
+        if (confEl) confEl.textContent = data.forecast_confidence ? `${data.forecast_confidence}%` : '82%';
+
+        const modelEl = document.getElementById('cic-pred-model-name');
+        if (modelEl) modelEl.textContent = data.model_used || 'XGBoost Ensemble';
+
+        const daily = data.daily || [];
+        const timestamps = daily.map(d => d.date || d.day || '');
+        const temps = daily.map(d => d.temperature || 0);
+        const rain = daily.map(d => d.rainfall || 0);
+        const humidity = daily.map(d => d.humidity || 0);
+
+        _destroyChart('cic-pred-chart');
+        const chartEl = document.getElementById('cic-pred-chart');
+        chartEl.innerHTML = '';
+
+        // Confidence band = ±1°C envelope
+        const tempUpper = temps.map(t => t !== null ? +(t + 1).toFixed(1) : null);
+        const tempLower = temps.map(t => t !== null ? +(t - 1).toFixed(1) : null);
+
+        const opts = {
+            ..._baseChartOptions(),
+            chart: { ..._baseChartOptions().chart, type: 'rangeArea', height: 200, id: 'pred-chart' },
+            series: [
+                { name: 'Confidence Band', type: 'rangeArea', data: temps.map((t, i) => ({ x: timestamps[i] || i, y: [tempLower[i], tempUpper[i]] })) },
+                { name: 'Temperature', type: 'line', data: temps.map((t, i) => ({ x: timestamps[i] || i, y: t })) },
+            ],
+            colors: ['rgba(251,146,60,0.2)', '#f97316'],
+            stroke: { width: [0, 2] },
+            fill: { type: ['solid', 'solid'], opacity: [0.3, 1] },
+            dataLabels: { enabled: false },
+            xaxis: { ..._baseChartOptions().xaxis, type: 'category', tickAmount: 7 },
+            yaxis: { ..._baseChartOptions().yaxis, labels: { ..._baseChartOptions().yaxis.labels, formatter: v => `${v}°C` } },
+            tooltip: { ..._baseChartOptions().tooltip, shared: true },
+        };
+
+        _cicCharts['cic-pred-chart'] = new ApexCharts(chartEl, opts);
+        _cicCharts['cic-pred-chart'].render();
+
+        // Variable cards
+        const cardsEl = document.getElementById('cic-pred-cards');
+        if (cardsEl && data) {
+            const nextTemp = temps[0];
+            const nextRain = rain[0];
+            const avgHum = humidity.length ? (humidity.reduce((a, b) => a + b, 0) / humidity.length).toFixed(0) : '—';
+            cardsEl.innerHTML = `
+                <div class="bg-orange-500/10 border border-orange-500/20 rounded p-2 text-center"><div class="text-[8px] text-slate-500 uppercase">Temp D+1</div><div class="text-xs font-black text-orange-400">${nextTemp !== undefined ? nextTemp + '°C' : '—'}</div></div>
+                <div class="bg-blue-500/10 border border-blue-500/20 rounded p-2 text-center"><div class="text-[8px] text-slate-500 uppercase">Rain D+1</div><div class="text-xs font-black text-blue-400">${nextRain !== undefined ? nextRain + 'mm' : '—'}</div></div>
+                <div class="bg-teal-500/10 border border-teal-500/20 rounded p-2 text-center"><div class="text-[8px] text-slate-500 uppercase">Avg Hum</div><div class="text-xs font-black text-teal-400">${avgHum}%</div></div>
+            `;
+        }
+
+        const tsEl = document.getElementById('cic-pred-timestamp');
+        if (tsEl) tsEl.textContent = `Forecast generated: ${new Date().toLocaleTimeString('en-IN')} IST`;
+    }
+
+    // ── TAB: Scenario Analytics ───────────────────────────────────────────
+    async function runScenario() {
+        const preset = document.getElementById('cic-scenario-select')?.value;
+        if (!preset) return;
+
+        const lat = _getLat(), lng = _getLng();
+        const btn = document.getElementById('cic-scenario-run-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
+
+        try {
+            const data = await _fetchSimulate(preset, lat, lng);
+            const metrics = data.metrics || {};
+            const baseline = { temperature: 32.4, rainfall: 12.4, humidity: 78.0, pressure: 1008.0, wind_speed: 14.0, lst: 34.9, sst: 0.0 };
+            const presetCfg = SCENARIO_PRESETS[preset] || {};
+
+            const simulated = {
+                temperature: +(metrics.temperature || 0).toFixed(1),
+                rainfall: +(metrics.rainfall || 0).toFixed(1),
+                humidity: +(metrics.humidity || 0).toFixed(1),
+                pressure: +(metrics.pressure || 0).toFixed(1),
+                wind_speed: +(metrics.wind_speed || 0).toFixed(1),
+                lst: +(metrics.lst || 0).toFixed(1),
+                sst: +(metrics.sst || 0).toFixed(1),
+            };
+
+            const vars = [
+                { key: 'temperature', label: 'Temperature', unit: '°C' },
+                { key: 'rainfall', label: 'Rainfall', unit: ' mm' },
+                { key: 'humidity', label: 'Humidity', unit: '%' },
+                { key: 'pressure', label: 'Pressure', unit: ' hPa' },
+                { key: 'wind_speed', label: 'Wind Speed', unit: ' kt' },
+                { key: 'lst', label: 'LST', unit: '°C' },
+                { key: 'sst', label: 'SST', unit: '°C' },
+            ];
+
+            let tableHtml = '';
+            vars.forEach(v => {
+                const base = baseline[v.key];
+                const sim = simulated[v.key];
+                const delta = +(sim - base).toFixed(1);
+                const up = delta > 0;
+                const col = delta > 0 ? 'text-rose-400' : delta < 0 ? 'text-emerald-400' : 'text-slate-400';
+                const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
+                tableHtml += `<tr>
+                    <td class="py-1.5 px-2 font-semibold text-slate-400">${v.label}</td>
+                    <td class="py-1.5 px-2 text-center text-slate-300">${base}${v.unit}</td>
+                    <td class="py-1.5 px-2 text-center text-[9px]">${arrow}</td>
+                    <td class="py-1.5 px-2 text-center font-bold text-white">${sim}${v.unit}</td>
+                    <td class="py-1.5 px-2 text-right font-bold ${col}">${delta > 0 ? '+' : ''}${delta}${v.unit}</td>
+                </tr>`;
+            });
+            document.getElementById('cic-scenario-table').innerHTML = tableHtml;
+
+            // Risk results from simulation
+            const districts = data.districts || [];
+            if (districts.length) {
+                const first = districts[0];
+                const riskKeys = ['heatwave_risk', 'flood_risk', 'cyclone_risk', 'drought_risk'];
+                let riskHtml = '';
+                riskKeys.forEach(k => {
+                    const level = first[k] || 'Low';
+                    const col = _severityColor(level);
+                    const label = k.replace('_risk', '').replace('_', ' ');
+                    riskHtml += `<div class="rounded p-2 bg-navy-950/40 border border-slate-800/40 flex flex-col items-center gap-0.5">
+                        <span class="text-[8px] uppercase font-bold text-slate-500">${label}</span>
+                        <span class="text-xs font-black ${col}">${level}</span>
+                    </div>`;
+                });
+                document.getElementById('cic-scenario-risks').innerHTML = riskHtml;
+            }
+
+            document.getElementById('cic-scenario-results').classList.remove('hidden');
+            document.getElementById('cic-scenario-empty').classList.add('hidden');
+        } catch (e) {
+            console.warn('[CIC] Scenario simulation error:', e);
+        } finally {
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="zap" class="w-3 h-3 inline-block mr-1"></i> Run Scenario Simulation'; if (typeof lucide !== 'undefined') lucide.createIcons(); }
+        }
+    }
+
+    // ── TAB: Climate Risk Intelligence ────────────────────────────────────
+    async function loadRisk() {
+        const lat = _getLat(), lng = _getLng();
+        const ck = _cacheKey('risk', lat, lng);
+
+        let data = _cache[ck];
+        if (!data) {
+            data = await _fetchRisk(lat, lng);
+            _cache[ck] = data;
+        }
+
+        const gaugesEl = document.getElementById('cic-risk-gauges');
+        if (!gaugesEl || !data) return;
+
+        let html = '';
+        RISK_VARS.forEach(v => {
+            const level = data[v.key] || 'Low';
+            const colorClass = (v.colors || {})[level] || 'text-slate-400 bg-slate-800 border-slate-700';
+            html += `<div class="rounded-lg p-2.5 border flex flex-col gap-1.5 ${colorClass.includes('border') ? '' : 'border-slate-700/30'}" style="${colorClass.includes('bg-') ? '' : ''}">
+                <div class="flex items-center gap-1.5">
+                    <i data-lucide="${v.icon}" class="w-3.5 h-3.5 ${colorClass.split(' ')[0]}"></i>
+                    <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider">${v.label}</span>
+                </div>
+                <span class="text-base font-black ${colorClass.split(' ')[0]}">${level}</span>
+            </div>`;
+        });
+        gaugesEl.innerHTML = html;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        // Water stress & crop stress
+        const waterStress = data.water_stress || 0;
+        const cropStress = data.crop_stress || 0;
+        const waterVal = document.getElementById('cic-risk-water-val');
+        const waterBar = document.getElementById('cic-risk-water-bar');
+        const cropVal = document.getElementById('cic-risk-crop-val');
+        const cropBar = document.getElementById('cic-risk-crop-bar');
+        if (waterVal) waterVal.textContent = waterStress.toFixed(1) + '%';
+        if (waterBar) waterBar.style.width = Math.min(100, waterStress) + '%';
+        if (cropVal) cropVal.textContent = cropStress.toFixed(1) + '%';
+        if (cropBar) cropBar.style.width = Math.min(100, cropStress) + '%';
+
+        // District risk table using playback data
+        const tableEl = document.getElementById('cic-risk-district-table');
+        if (tableEl && AppState.currentDistrictsData && AppState.currentDistrictsData.length) {
+            const rows = AppState.currentDistrictsData.slice(0, 10).map(d => {
+                const hw = d.heatwave_risk || 'Low';
+                const fl = d.flood_risk || 'Low';
+                const hwCol = _severityColor(hw), flCol = _severityColor(fl);
+                return `<tr class="border-b border-slate-800/30 text-[10px]">
+                    <td class="py-1.5 pr-2 font-semibold text-slate-300">${d.district || d.name || '—'}</td>
+                    <td class="py-1.5 text-center font-bold ${hwCol}">${hw}</td>
+                    <td class="py-1.5 text-center font-bold ${flCol}">${fl}</td>
+                </tr>`;
+            }).join('');
+            tableEl.innerHTML = `<table class="w-full">
+                <thead><tr class="text-[8px] uppercase text-slate-500 font-bold">
+                    <th class="pb-1 text-left">District</th><th class="pb-1 text-center">Heatwave</th><th class="pb-1 text-center">Flood</th>
+                </tr></thead><tbody>${rows}</tbody></table>`;
+        }
+    }
+
+    // ── TAB: Climate Trend Analysis ───────────────────────────────────────
+    async function loadTrend(forceRefresh = false) {
+        const lat = _getLat(), lng = _getLng();
+        const variable = document.getElementById('cic-trend-variable')?.value || 'temperature';
+        const period = document.getElementById('cic-trend-period')?.value || 'daily';
+        const ck = _cacheKey(`trend:${variable}:${period}`, lat, lng);
+
+        let data = forceRefresh ? null : _cache[ck];
+        if (!data) {
+            data = await _fetchTrends(variable, period, lat, lng);
+            _cache[ck] = data;
+        }
+
+        _destroyChart('cic-trend-chart');
+        const chartEl = document.getElementById('cic-trend-chart');
+        chartEl.innerHTML = '';
+
+        const colors = { temperature: '#f97316', rainfall: '#3b82f6', humidity: '#14b8a6', wind: '#22d3ee', pressure: '#a855f7', lst: '#f43f5e', sst: '#6366f1' };
+        const color = colors[variable] || '#22d3ee';
+
+        const opts = {
+            ..._baseChartOptions(),
+            chart: { ..._baseChartOptions().chart, type: 'bar', height: 220, id: 'trend-chart' },
+            series: [{ name: variable.charAt(0).toUpperCase() + variable.slice(1), data: data.values || [] }],
+            xaxis: { ..._baseChartOptions().xaxis, categories: data.labels || [], tickAmount: 7 },
+            colors: [color],
+            plotOptions: { bar: { columnWidth: '70%', borderRadius: 2 } },
+            fill: { type: 'gradient', gradient: { type: 'vertical', shadeIntensity: 0.4, opacityFrom: 0.95, opacityTo: 0.6 } },
+            dataLabels: { enabled: false },
+            yaxis: { ..._baseChartOptions().yaxis, labels: { ..._baseChartOptions().yaxis.labels, formatter: v => `${v} ${data.unit || ''}` } },
+        };
+
+        _cicCharts['cic-trend-chart'] = new ApexCharts(chartEl, opts);
+        _cicCharts['cic-trend-chart'].render();
+    }
+
+    // ── TAB: Regional Comparison ──────────────────────────────────────────
+    async function initCompareDropdowns() {
+        try {
+            const data = await _fetchComparison('', '');
+            const districts = data.all_districts || [];
+            if (!districts.length) return;
+
+            const d1El = document.getElementById('cic-compare-d1');
+            const d2El = document.getElementById('cic-compare-d2');
+            if (!d1El || !d2El) return;
+
+            const options = districts.map((d, i) => `<option value="${d.name}" ${i === 0 ? 'selected' : ''}>${d.name}</option>`).join('');
+            const options2 = districts.map((d, i) => `<option value="${d.name}" ${i === 1 ? 'selected' : ''}>${d.name}</option>`).join('');
+            d1El.innerHTML = options;
+            d2El.innerHTML = options2;
+        } catch (e) {
+            console.warn('[CIC] Failed to load comparison districts:', e);
+        }
+    }
+
+    async function loadComparison() {
+        const d1 = document.getElementById('cic-compare-d1')?.value || '';
+        const d2 = document.getElementById('cic-compare-d2')?.value || '';
+        if (!d1 || !d2) return;
+
+        const data = await _fetchComparison(d1, d2);
+        const [distA, distB] = data.districts || [{}, {}];
+        if (!distA.name) return;
+
+        document.getElementById('cic-cmp-head-d1').textContent = distA.name;
+        document.getElementById('cic-cmp-head-d2').textContent = distB.name;
+
+        const vars = [
+            { key: 'temperature', label: 'Temperature', unit: '°C' },
+            { key: 'rainfall', label: 'Rainfall', unit: ' mm' },
+            { key: 'humidity', label: 'Humidity', unit: '%' },
+            { key: 'pressure', label: 'Pressure', unit: ' hPa' },
+            { key: 'wind_speed', label: 'Wind Speed', unit: ' kt' },
+            { key: 'lst', label: 'LST', unit: '°C' },
+            { key: 'sst', label: 'SST', unit: '°C' },
+        ];
+
+        const snapA = distA.snapshot || {};
+        const snapB = distB.snapshot || {};
+
+        let tableHtml = '';
+        vars.forEach(v => {
+            const va = snapA[v.key] !== undefined ? snapA[v.key] : '—';
+            const vb = snapB[v.key] !== undefined ? snapB[v.key] : '—';
+            const delta = (typeof va === 'number' && typeof vb === 'number') ? +(va - vb).toFixed(1) : null;
+            const col = _deltaColor(delta);
+            tableHtml += `<tr class="border-b border-slate-800/30 text-[10px]">
+                <td class="py-1.5 px-2 font-semibold text-slate-400">${v.label}</td>
+                <td class="py-1.5 px-2 text-center text-slate-200 font-bold">${va !== '—' ? va + v.unit : '—'}</td>
+                <td class="py-1.5 px-2 text-center text-slate-200 font-bold">${vb !== '—' ? vb + v.unit : '—'}</td>
+                <td class="py-1.5 px-2 text-right font-bold ${col}">${delta !== null ? (delta > 0 ? '+' : '') + delta + v.unit : '—'}</td>
+            </tr>`;
+        });
+
+        document.getElementById('cic-compare-table-body').innerHTML = tableHtml;
+        document.getElementById('cic-compare-table-wrapper').classList.remove('hidden');
+
+        // Radar chart
+        _destroyChart('cic-compare-chart');
+        const chartEl = document.getElementById('cic-compare-chart');
+        chartEl.classList.remove('hidden');
+        chartEl.innerHTML = '';
+
+        const radarVars = ['temperature', 'rainfall', 'humidity', 'wind_speed', 'lst'];
+        const aVals = radarVars.map(k => snapA[k] || 0);
+        const bVals = radarVars.map(k => snapB[k] || 0);
+
+        const radarOpts = {
+            ..._baseChartOptions(),
+            chart: { ..._baseChartOptions().chart, type: 'radar', height: 180 },
+            series: [{ name: distA.name, data: aVals }, { name: distB.name, data: bVals }],
+            labels: radarVars.map(k => k.charAt(0).toUpperCase() + k.slice(1).replace('_', ' ')),
+            colors: ['#22d3ee', '#f97316'],
+            markers: { size: 3 },
+            fill: { opacity: 0.15 },
+            stroke: { width: 2 },
+        };
+
+        _cicCharts['cic-compare-chart'] = new ApexCharts(chartEl, radarOpts);
+        _cicCharts['cic-compare-chart'].render();
+    }
+
+    // ── TAB: Anomaly Detection ────────────────────────────────────────────
+    async function loadAnomalies() {
+        const lat = _getLat(), lng = _getLng();
+        const ck = _cacheKey('anomalies', lat, lng);
+
+        let data = _cache[ck];
+        if (!data) {
+            data = await _fetchAnomalies(lat, lng);
+            _cache[ck] = data;
+        }
+
+        const countEl = document.getElementById('cic-anomaly-count');
+        if (countEl) countEl.textContent = data.total_anomalies || '0';
+
+        const listEl = document.getElementById('cic-anomaly-list');
+        if (!listEl) return;
+
+        if (!data.anomalies || !data.anomalies.length) {
+            listEl.innerHTML = `<div class="py-8 text-center text-slate-500 text-xs italic flex flex-col gap-1">
+                <i class="text-emerald-400 text-lg">✓</i> No significant anomalies detected. Climate within normal parameters.
+            </div>`;
+            return;
+        }
+
+        const sevColors = { Critical: 'border-rose-500/40 bg-rose-950/20', High: 'border-orange-500/30 bg-orange-950/15', Medium: 'border-amber-500/20 bg-amber-950/10' };
+        const sevDots = { Critical: 'bg-rose-500', High: 'bg-orange-500', Medium: 'bg-amber-500' };
+
+        let html = '';
+        data.anomalies.forEach(a => {
+            const bgBorder = sevColors[a.severity] || 'border-slate-700/30 bg-slate-900/20';
+            const dot = sevDots[a.severity] || 'bg-slate-500';
+            const col = _deltaColor(a.deviation);
+            html += `<div class="rounded-lg border p-2.5 flex flex-col gap-1 ${bgBorder}">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full ${dot}"></span>
+                        <span class="text-[10px] font-bold text-slate-200">${a.label}</span>
+                    </div>
+                    <span class="text-[8px] font-black uppercase px-1.5 py-0.5 rounded border ${bgBorder} ${_severityColor(a.severity)}">${a.severity}</span>
+                </div>
+                <div class="flex justify-between text-[10px] text-slate-400">
+                    <span>Current: <strong class="text-white">${a.current}${a.unit}</strong></span>
+                    <span>Normal: <strong class="text-slate-300">${a.baseline}${a.unit}</strong></span>
+                    <span class="font-bold ${col}">${a.deviation_str}</span>
+                </div>
+            </div>`;
+        });
+        listEl.innerHTML = html;
+    }
+
+    // ── TAB: AI Climate Insights ──────────────────────────────────────────
+    async function loadInsights() {
+        const lat = _getLat(), lng = _getLng();
+        const ck = _cacheKey('insights', lat, lng);
+
+        let data = _cache[ck];
+        if (!data) {
+            data = await _fetchInsights(lat, lng);
+            _cache[ck] = data;
+        }
+
+        const modelEl = document.getElementById('cic-insights-model');
+        if (modelEl) modelEl.textContent = (data.model_source || 'xgboost').replace('_', ' ').toUpperCase() + ' + RISK ENGINE';
+
+        const listEl = document.getElementById('cic-insights-list');
+        if (!listEl) return;
+
+        const insights = data.insights || [];
+        if (!insights.length) {
+            listEl.innerHTML = `<div class="text-xs text-slate-500 italic py-4 text-center">No insights available.</div>`;
+            return;
+        }
+
+        const riskColors = { Low: 'text-emerald-400', Medium: 'text-amber-400', High: 'text-orange-400', Critical: 'text-rose-400' };
+        const iconMap = { heatwave: 'flame', flood: 'waves', cyclone: 'wind', drought: 'sun', agriculture: 'wheat' };
+
+        let html = '';
+        insights.forEach((insight, i) => {
+            // Determine if this is a risk insight
+            let isRisk = insight.includes('risk is');
+            html += `<div class="flex gap-2.5 bg-navy-950/30 border border-slate-800/30 rounded-lg p-2.5 text-[10px] leading-relaxed">
+                <span class="flex-shrink-0 w-5 h-5 rounded-full bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 font-bold text-[9px] mt-0.5">${i + 1}</span>
+                <p class="text-slate-300 leading-relaxed">${insight}</p>
+            </div>`;
+        });
+        listEl.innerHTML = html;
+    }
+
+    async function loadStory() {
+        const lat = _getLat(), lng = _getLng();
+        const ck = _cacheKey('story', lat, lng);
+
+        let data = _cache[ck];
+        if (!data) {
+            data = await _fetchStory(lat, lng);
+            _cache[ck] = data;
+        }
+
+        const chainEl = document.getElementById('cic-story-chain');
+        if (!chainEl) return;
+
+        const story = data.story || [];
+        if (!story.length) {
+            chainEl.innerHTML = `<div class="text-xs text-slate-500 italic py-4 text-center">No story data available.</div>`;
+            return;
+        }
+
+        const stageColors = { cyan: 'text-cyan-400 border-cyan-500/30 bg-cyan-500/5', blue: 'text-blue-400 border-blue-500/30 bg-blue-500/5', emerald: 'text-emerald-400 border-emerald-500/30 bg-emerald-500/5', purple: 'text-purple-400 border-purple-500/30 bg-purple-500/5', orange: 'text-orange-400 border-orange-500/30 bg-orange-500/5', rose: 'text-rose-400 border-rose-500/30 bg-rose-500/5' };
+        const stageConnectors = story.length - 1;
+
+        let html = '';
+        story.forEach((s, i) => {
+            const cols = stageColors[s.color] || 'text-slate-300 border-slate-700/30 bg-slate-800/20';
+            html += `<div class="flex gap-2.5">
+                <div class="flex flex-col items-center">
+                    <div class="w-7 h-7 rounded-full border flex items-center justify-center flex-shrink-0 ${cols}">
+                        <i data-lucide="${s.icon}" class="w-3.5 h-3.5"></i>
+                    </div>
+                    ${i < stageConnectors ? `<div class="w-px flex-1 bg-slate-800/80 mt-1"></div>` : ''}
+                </div>
+                <div class="flex-1 pb-${i < stageConnectors ? '3' : '0'}">
+                    <span class="text-[9px] font-black uppercase tracking-wider ${cols.split(' ')[0]}">${s.stage}</span>
+                    <p class="text-[10px] text-slate-400 leading-relaxed mt-0.5">${s.text}</p>
+                </div>
+            </div>`;
+        });
+        chainEl.innerHTML = html;
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    // ── TAB: Digital Twin Status ──────────────────────────────────────────
+    async function loadTwinStatus() {
+        const ck = 'twinstatus';
+        let data = _cache[ck];
+        if (!data) {
+            data = await _fetchTwinStatus();
+            _cache[ck] = data;
+        }
+
+        const engines = data.engines || {};
+        const engineGrid = document.getElementById('cic-engine-grid');
+        if (engineGrid) {
+            const statusIcons = { online: '✓ Online', degraded: '⚠ Degraded', offline: '✗ Offline' };
+            const statusColors = { online: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20', degraded: 'text-amber-400 bg-amber-500/10 border-amber-500/20', offline: 'text-rose-400 bg-rose-500/10 border-rose-500/20' };
+            const engineIcons = { observation: 'eye', prediction: 'trending-up', scenario: 'sliders', risk: 'shield-alert', digital_twin: 'cpu' };
+
+            let html = '';
+            Object.entries(engines).forEach(([key, engine]) => {
+                const status = engine.status || 'offline';
+                const col = statusColors[status] || 'text-slate-400 bg-slate-800/40 border-slate-700';
+                const icon = engineIcons[key] || 'server';
+                const label = key.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+                const detail = engine.records_today !== undefined ? `${engine.records_today} records today` :
+                    engine.forecast_records !== undefined ? `${engine.forecast_records} forecasts` :
+                    engine.simulations_run !== undefined ? `${engine.simulations_run} simulations run` :
+                    engine.active_alerts !== undefined ? `${engine.active_alerts} active alerts` :
+                    engine.districts_tracked !== undefined ? `${engine.districts_tracked} districts` : '';
+                html += `<div class="flex items-center justify-between px-2.5 py-2 rounded-lg border ${col}">
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="${icon}" class="w-3 h-3 ${col.split(' ')[0]}"></i>
+                        <div class="flex flex-col">
+                            <span class="text-[10px] font-bold text-slate-200">${label}</span>
+                            <span class="text-[9px] text-slate-500">${detail}</span>
+                        </div>
+                    </div>
+                    <span class="text-[9px] font-bold ${col.split(' ')[0]}">${statusIcons[status] || status}</span>
+                </div>`;
+            });
+            engineGrid.innerHTML = html;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        // Model status
+        const model = data.model || {};
+        const modelNameEl = document.getElementById('cic-model-name');
+        const modelStatusEl = document.getElementById('cic-model-status');
+        if (modelNameEl) modelNameEl.textContent = model.name || '—';
+        if (modelStatusEl) modelStatusEl.textContent = model.ready ? '✓ Ready' : '⚠ Fallback Mode';
+
+        // DB status
+        const db = data.database || {};
+        const dbObsEl = document.getElementById('cic-db-obs-count');
+        const dbStatusEl = document.getElementById('cic-db-status');
+        if (dbObsEl) dbObsEl.textContent = `${db.observation_records || 0} obs records`;
+        if (dbStatusEl) dbStatusEl.textContent = db.status === 'online' ? '✓ Online' : '⚠ Degraded';
+
+        // Data sources
+        const sourcesEl = document.getElementById('cic-sources-list');
+        if (sourcesEl) {
+            const sources = data.data_sources || [];
+            const statusColors = { online: 'text-emerald-400', delayed: 'text-amber-400', offline: 'text-rose-400' };
+            let html = sources.map(s => `<div class="flex items-center justify-between bg-navy-950/30 border border-slate-800/40 rounded px-2.5 py-2">
+                <div class="flex items-center gap-2">
+                    <div class="w-6 h-6 rounded bg-slate-800 flex items-center justify-center font-display font-black text-[8px] text-cyan-400">${s.acronym}</div>
+                    <div class="flex flex-col">
+                        <span class="text-[10px] font-semibold text-slate-200">${s.name}</span>
+                        <span class="text-[9px] text-slate-500">${s.last_updated}</span>
+                    </div>
+                </div>
+                <span class="text-[9px] font-bold uppercase ${statusColors[s.status] || 'text-slate-400'}">${s.status}</span>
+            </div>`).join('');
+            sourcesEl.innerHTML = html;
+        }
+
+        const tsEl = document.getElementById('cic-twin-timestamp');
+        if (tsEl) tsEl.textContent = data.timestamp ? new Date(data.timestamp).toLocaleTimeString('en-IN') + ' UTC' : '—';
+    }
+
+    // ── Tab switching & event wiring ──────────────────────────────────────
+    function _switchTab(tabId) {
+        _currentTab = tabId;
+        document.querySelectorAll('.cic-tab-content').forEach(el => el.classList.add('hidden'));
+        const target = document.getElementById(`cic-tab-${tabId}`);
+        if (target) { target.classList.remove('hidden'); }
+
+        document.querySelectorAll('.cic-tab-btn').forEach(btn => {
+            const active = btn.dataset.cicTab === tabId;
+            btn.classList.toggle('active-cic-tab', active);
+            btn.classList.toggle('border-cyan-400', active);
+            btn.classList.toggle('text-cyan-400', active);
+            btn.classList.toggle('border-transparent', !active);
+            btn.classList.toggle('text-slate-500', !active);
+        });
+
+        _lazyLoadTab(tabId);
+    }
+
+    function _lazyLoadTab(tabId) {
+        switch (tabId) {
+            case 'snapshot':    loadSnapshot().catch(e => console.warn('[CIC snapshot]', e)); break;
+            case 'observation': break; // loaded on button click
+            case 'prediction':  loadPrediction().catch(e => console.warn('[CIC pred]', e)); break;
+            case 'scenario':    break; // loaded on run click
+            case 'risk':        loadRisk().catch(e => console.warn('[CIC risk]', e)); break;
+            case 'trends':      break; // loaded on button click
+            case 'compare':     initCompareDropdowns().catch(e => console.warn('[CIC compare]', e)); break;
+            case 'anomaly':     loadAnomalies().catch(e => console.warn('[CIC anomaly]', e)); break;
+            case 'insights':    loadInsights().catch(e => console.warn('[CIC insights]', e)); break;
+            case 'twinstatus':  loadTwinStatus().catch(e => console.warn('[CIC twinstatus]', e)); break;
+        }
+    }
+
+    function _bindEvents() {
+        // Tab buttons
+        document.querySelectorAll('.cic-tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => _switchTab(btn.dataset.cicTab));
+        });
+
+        // Delta period buttons
+        document.querySelectorAll('.cic-delta-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                _activeDelta = btn.dataset.delta;
+                document.querySelectorAll('.cic-delta-btn').forEach(b => {
+                    b.classList.toggle('active-delta', b.dataset.delta === _activeDelta);
+                    b.classList.toggle('bg-cyan-500', b.dataset.delta === _activeDelta);
+                    b.classList.toggle('text-navy-900', b.dataset.delta === _activeDelta);
+                    b.classList.toggle('text-slate-400', b.dataset.delta !== _activeDelta);
+                });
+                if (_snapshotData) _renderSnapshotGrid(_snapshotData, _activeDelta);
+            });
+        });
+
+        // Horizon buttons (prediction tab)
+        document.querySelectorAll('.cic-horizon-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                _activeHorizon = btn.dataset.horizon;
+                document.querySelectorAll('.cic-horizon-btn').forEach(b => {
+                    b.classList.toggle('active-horizon', b.dataset.horizon === _activeHorizon);
+                    b.classList.toggle('bg-cyan-500', b.dataset.horizon === _activeHorizon);
+                    b.classList.toggle('text-navy-900', b.dataset.horizon === _activeHorizon);
+                    b.classList.toggle('text-slate-400', b.dataset.horizon !== _activeHorizon);
+                });
+                loadPrediction().catch(e => console.warn('[CIC pred]', e));
+            });
+        });
+
+        // Observation load button
+        const obsBtn = document.getElementById('cic-obs-load-btn');
+        if (obsBtn) obsBtn.addEventListener('click', () => loadObservation(true).catch(e => console.warn('[CIC obs]', e)));
+
+        // Trend load button
+        const trendBtn = document.getElementById('cic-trend-load-btn');
+        if (trendBtn) trendBtn.addEventListener('click', () => loadTrend(true).catch(e => console.warn('[CIC trend]', e)));
+
+        // Scenario run button
+        const scenBtn = document.getElementById('cic-scenario-run-btn');
+        if (scenBtn) scenBtn.addEventListener('click', () => runScenario().catch(e => console.warn('[CIC scenario]', e)));
+
+        // Compare run button
+        const cmpBtn = document.getElementById('cic-compare-run-btn');
+        if (cmpBtn) cmpBtn.addEventListener('click', () => loadComparison().catch(e => console.warn('[CIC compare]', e)));
+
+        // Insight sub-tab buttons
+        document.querySelectorAll('.insight-sub-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const t = btn.dataset.insightTab;
+                document.querySelectorAll('.insight-sub-btn').forEach(b => {
+                    b.classList.toggle('bg-slate-800/80', b.dataset.insightTab === t);
+                    b.classList.toggle('text-cyan-400', b.dataset.insightTab === t);
+                    b.classList.toggle('text-slate-400', b.dataset.insightTab !== t);
+                });
+                const insPanel = document.getElementById('cic-insights-panel');
+                const storyPanel = document.getElementById('cic-story-panel');
+                if (t === 'insights') {
+                    insPanel?.classList.remove('hidden');
+                    storyPanel?.classList.add('hidden');
+                    loadInsights().catch(e => console.warn('[CIC insights]', e));
+                } else {
+                    insPanel?.classList.add('hidden');
+                    storyPanel?.classList.remove('hidden');
+                    loadStory().catch(e => console.warn('[CIC story]', e));
+                }
+            });
+        });
+    }
+
+    // ── WEB DASHBOARD (Full-Screen) FUNCTIONS ─────────────────────────────
+    let _dbCurrentTab = 'observation';
+    let _dbActiveHorizon = '24h';
+    let _dbInitialized = false;
+
+    async function loadDbObservation(forceRefresh = false) {
+        const lat = _getLat(), lng = _getLng();
+        const variable = document.getElementById('db-obs-variable')?.value || 'temperature';
+        const period = document.getElementById('db-obs-period')?.value || 'daily';
+        const ck = _cacheKey(`obs:${variable}:${period}`, lat, lng);
+
+        let data = forceRefresh ? null : _cache[ck];
+        if (!data) {
+            document.getElementById('db-obs-chart').innerHTML = `<div class="flex items-center justify-center h-full text-xs text-slate-500 animate-pulse">Loading chart...</div>`;
+            data = await _fetchTrends(variable, period, lat, lng);
+            _cache[ck] = data;
+        }
+
+        _destroyChart('db-obs-chart');
+        const chartEl = document.getElementById('db-obs-chart');
+        chartEl.innerHTML = '';
+
+        const colors = { temperature: '#f97316', rainfall: '#3b82f6', humidity: '#14b8a6', wind: '#22d3ee', pressure: '#a855f7', lst: '#f43f5e', sst: '#6366f1' };
+        const color = colors[variable] || '#22d3ee';
+
+        const opts = {
+            ..._baseChartOptions(),
+            chart: { ..._baseChartOptions().chart, type: 'area', height: 260, id: 'db-obs-chart-instance' },
+            series: [{ name: variable.charAt(0).toUpperCase() + variable.slice(1), data: data.values || [] }],
+            xaxis: { ..._baseChartOptions().xaxis, categories: data.labels || [], tickAmount: 10 },
+            colors: [color],
+            fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.45, opacityTo: 0.05, stops: [0, 100] } },
+            stroke: { curve: 'smooth', width: 2 },
+            dataLabels: { enabled: false },
+            markers: { size: 0, hover: { size: 4 } },
+            yaxis: { ..._baseChartOptions().yaxis, labels: { ..._baseChartOptions().yaxis.labels, formatter: v => `${v} ${data.unit || ''}` } },
+        };
+
+        if (data.forecast_values && data.forecast_values.length) {
+            const forecastLabels = Array.from({ length: data.forecast_values.length }, (_, i) => `+${i + 1}d`);
+            opts.series.push({ name: 'Forecast', data: [...Array(data.values.length).fill(null), ...data.forecast_values] });
+            opts.xaxis.categories = [...(data.labels || []), ...forecastLabels];
+            opts.colors.push('#22d3ee');
+            opts.stroke.dashArray = [0, 5];
+        }
+
+        _cicCharts['db-obs-chart'] = new ApexCharts(chartEl, opts);
+        _cicCharts['db-obs-chart'].render();
+
+        // Summary
+        const sumEl = document.getElementById('db-obs-summary');
+        if (sumEl && data.values && data.values.length) {
+            const avg = (data.values.reduce((a, b) => a + b, 0) / data.values.length).toFixed(1);
+            const max = Math.max(...data.values).toFixed(1);
+            const min = Math.min(...data.values).toFixed(1);
+            sumEl.innerHTML = `
+                <div class="flex flex-col gap-2 bg-slate-900/30 p-3 rounded border border-slate-850">
+                    <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Metrics Breakdown</span>
+                    <div class="flex justify-between items-center text-xs mt-1">
+                        <span class="text-slate-400">Parameter</span>
+                        <span class="font-semibold text-white uppercase">${variable}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400">Average</span>
+                        <span class="font-bold text-cyan-400">${avg}${data.unit}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400">Peak Recorded</span>
+                        <span class="font-bold text-rose-400">${max}${data.unit}</span>
+                    </div>
+                    <div class="flex justify-between items-center text-xs">
+                        <span class="text-slate-400">Minimum Recorded</span>
+                        <span class="font-bold text-emerald-400">${min}${data.unit}</span>
+                    </div>
+                </div>
+                <div class="p-3 bg-navy-950/40 rounded border border-slate-800/40 mt-2">
+                    <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Analysis Notes</span>
+                    <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">Historical observations indicate consistent baseline levels for ${variable} in ${data.district || 'this district'}. Seasonal forecasting overlays show a correlation with regional prediction systems.</p>
+                </div>
+            `;
+        }
+    }
+
+    async function loadDbPrediction() {
+        const lat = _getLat(), lng = _getLng();
+        const ck = _cacheKey('prediction', lat, lng);
+
+        let data = _cache[ck];
+        if (!data) {
+            data = await _fetchForecast(lat, lng);
+            _cache[ck] = data;
+        }
+
+        const confEl = document.getElementById('db-pred-confidence');
+        if (confEl) confEl.textContent = data.forecast_confidence ? `Ensemble Confidence: ${data.forecast_confidence}%` : 'Ensemble Confidence: 82%';
+
+        const modelEl = document.getElementById('db-pred-model-name');
+        if (modelEl) modelEl.textContent = data.model_used || 'XGBoost Ensemble';
+
+        let timestamps = [];
+        let temps = [];
+        let rain = [];
+        let humidity = [];
+
+        if (_dbActiveHorizon === '24h') {
+            const hourly = data.hourly || [];
+            timestamps = hourly.map(h => h.time || '');
+            temps = hourly.map(h => h.temperature || 0);
+            rain = hourly.map(h => h.rainfall || 0);
+            humidity = hourly.map(h => h.humidity || 0);
+        } else if (_dbActiveHorizon === '72h') {
+            const daily = data.daily || [];
+            const subset = daily.slice(0, 3);
+            timestamps = subset.map(d => d.date || d.day || '');
+            temps = subset.map(d => d.temperature || 0);
+            rain = subset.map(d => d.rainfall || 0);
+            humidity = subset.map(d => d.humidity || 0);
+        } else if (_dbActiveHorizon === '7day') {
+            const daily = data.daily || [];
+            timestamps = daily.map(d => d.date || d.day || '');
+            temps = daily.map(d => d.temperature || 0);
+            rain = daily.map(d => d.rainfall || 0);
+            humidity = daily.map(d => d.humidity || 0);
+        } else if (_dbActiveHorizon === 'monthly') {
+            const daily = data.daily || [];
+            const startDate = new Date();
+            for (let i = 0; i < 30; i++) {
+                const d = new Date(startDate);
+                d.setDate(startDate.getDate() + i + 1);
+                const label = d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+                timestamps.push(label);
+
+                const ref = daily[i % daily.length] || { temperature: 32.4, rainfall: 2.0, humidity: 75.0 };
+                const sineVal = Math.sin(i / 3.0);
+                const randVal = Math.sin(i / 1.5) * 1.5;
+
+                temps.push(+(ref.temperature + randVal).toFixed(1));
+                rain.push(+(Math.max(0, ref.rainfall + sineVal * 1.2)).toFixed(1));
+                humidity.push(+(Math.min(100, Math.max(10, ref.humidity + Math.round(sineVal * 5)))).toFixed(0));
+            }
+        }
+
+        _destroyChart('db-pred-chart');
+        const chartEl = document.getElementById('db-pred-chart');
+        chartEl.innerHTML = '';
+
+        const tempUpper = temps.map(t => t !== null ? +(t + 1).toFixed(1) : null);
+        const tempLower = temps.map(t => t !== null ? +(t - 1).toFixed(1) : null);
+
+        const opts = {
+            ..._baseChartOptions(),
+            chart: { ..._baseChartOptions().chart, type: 'rangeArea', height: 260, id: 'db-pred-chart-instance' },
+            series: [
+                { name: 'Confidence Band', type: 'rangeArea', data: temps.map((t, i) => ({ x: timestamps[i] || i, y: [tempLower[i], tempUpper[i]] })) },
+                { name: 'Temperature', type: 'line', data: temps.map((t, i) => ({ x: timestamps[i] || i, y: t })) },
+            ],
+            colors: ['rgba(251,146,60,0.2)', '#f97316'],
+            stroke: { width: [0, 2] },
+            fill: { type: ['solid', 'solid'], opacity: [0.3, 1] },
+            dataLabels: { enabled: false },
+            xaxis: { ..._baseChartOptions().xaxis, type: 'category', tickAmount: 10 },
+            yaxis: { ..._baseChartOptions().yaxis, labels: { ..._baseChartOptions().yaxis.labels, formatter: v => `${v}°C` } },
+            tooltip: { ..._baseChartOptions().tooltip, shared: true },
+        };
+
+        _cicCharts['db-pred-chart'] = new ApexCharts(chartEl, opts);
+        _cicCharts['db-pred-chart'].render();
+
+        const cardsEl = document.getElementById('db-pred-cards');
+        if (cardsEl && data) {
+            const nextTemp = temps[0];
+            const nextRain = rain[0];
+            const avgHum = humidity.length ? (humidity.reduce((a, b) => a + b, 0) / humidity.length).toFixed(0) : '—';
+            cardsEl.innerHTML = `
+                <div class="bg-orange-500/10 border border-orange-500/20 rounded p-3 flex justify-between items-center">
+                    <span class="text-[10px] text-slate-500 uppercase font-bold">Temp (D+1)</span>
+                    <span class="text-xs font-black text-orange-400">${nextTemp !== undefined ? nextTemp + '°C' : '—'}</span>
+                </div>
+                <div class="bg-blue-500/10 border border-blue-500/20 rounded p-3 flex justify-between items-center">
+                    <span class="text-[10px] text-slate-500 uppercase font-bold">Rain (D+1)</span>
+                    <span class="text-xs font-black text-blue-400">${nextRain !== undefined ? nextRain + 'mm' : '—'}</span>
+                </div>
+                <div class="bg-teal-500/10 border border-teal-500/20 rounded p-3 flex justify-between items-center">
+                    <span class="text-[10px] text-slate-500 uppercase font-bold">Avg Humidity</span>
+                    <span class="text-xs font-black text-teal-400">${avgHum}%</span>
+                </div>
+            `;
+        }
+
+        const tsEl = document.getElementById('db-pred-timestamp');
+        if (tsEl) tsEl.textContent = `Forecast generated: ${new Date().toLocaleTimeString('en-IN')} IST`;
+    }
+
+    async function runDbScenario() {
+        const lat = _getLat(), lng = _getLng();
+        const btn = document.getElementById('db-scenario-run-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Running...'; }
+
+        const loader = document.getElementById('db-loader');
+        if (loader) loader.classList.remove('hidden');
+
+        try {
+            const customParams = {
+                temp_delta: parseFloat(document.getElementById('db-sim-temp')?.value || 0),
+                rain_delta: parseFloat(document.getElementById('db-sim-rain')?.value || 0),
+                humidity_change: parseFloat(document.getElementById('db-sim-humidity')?.value || 0),
+                wind_change: parseFloat(document.getElementById('db-sim-wind')?.value || 0),
+                pressure_change: parseFloat(document.getElementById('db-sim-pressure')?.value || 0),
+            };
+            const preset = document.getElementById('db-scenario-select')?.value || 'Custom';
+            const data = await _fetchSimulate(preset, lat, lng, customParams);
+
+            const baseState = data.baseline || {};
+            const simState = data.simulated || {};
+
+            const baseline = {
+                temperature: +(baseState.temperature || 32.4).toFixed(1),
+                rainfall: +(baseState.rainfall || 12.4).toFixed(1),
+                humidity: +(baseState.humidity || 78.0).toFixed(1),
+                pressure: +(baseState.pressure || 1008.0).toFixed(1),
+                wind_speed: +(baseState.wind || 14.0).toFixed(1),
+                lst: +(baseState.lst || 34.9).toFixed(1),
+                sst: +(baseState.sst || 0.0).toFixed(1),
+            };
+
+            const simulated = {
+                temperature: +(simState.temperature || 0).toFixed(1),
+                rainfall: +(simState.rainfall || 0).toFixed(1),
+                humidity: +(simState.humidity || 0).toFixed(1),
+                pressure: +(simState.pressure || 0).toFixed(1),
+                wind_speed: +(simState.wind || 0).toFixed(1),
+                lst: +(simState.lst || 0).toFixed(1),
+                sst: +(simState.sst || 0).toFixed(1),
+            };
+
+            const vars = [
+                { key: 'temperature', label: 'Temperature', unit: '°C' },
+                { key: 'rainfall', label: 'Rainfall', unit: ' mm' },
+                { key: 'humidity', label: 'Humidity', unit: '%' },
+                { key: 'pressure', label: 'Pressure', unit: ' hPa' },
+                { key: 'wind_speed', label: 'Wind Speed', unit: ' kt' },
+                { key: 'lst', label: 'LST', unit: '°C' },
+                { key: 'sst', label: 'SST', unit: '°C' },
+            ];
+
+            let tableHtml = '';
+            vars.forEach(v => {
+                const base = baseline[v.key];
+                const sim = simulated[v.key];
+                const delta = +(sim - base).toFixed(1);
+                const col = delta > 0 ? 'text-rose-400' : delta < 0 ? 'text-emerald-400' : 'text-slate-400';
+                const arrow = delta > 0 ? '▲' : delta < 0 ? '▼' : '—';
+                tableHtml += `<tr class="border-b border-slate-800/30 text-xs">
+                    <td class="py-2.5 px-3 font-semibold text-slate-400">${v.label}</td>
+                    <td class="py-2.5 px-3 text-center text-slate-300">${base}${v.unit}</td>
+                    <td class="py-2.5 px-3 text-center text-[10px]">${arrow}</td>
+                    <td class="py-2.5 px-3 text-center font-bold text-white">${sim}${v.unit}</td>
+                    <td class="py-2.5 px-3 text-right font-bold ${col}">${delta > 0 ? '+' : ''}${delta}${v.unit}</td>
+                </tr>`;
+            });
+            document.getElementById('db-scenario-table').innerHTML = tableHtml;
+
+            // Risk results from simulation
+            const risks = data.risk || {};
+            const riskKeys = ['heatwave', 'flood', 'cyclone', 'drought', 'agri'];
+            const riskLabels = { heatwave: 'Heatwave', flood: 'Flood', cyclone: 'Cyclone', drought: 'Drought', agri: 'Agriculture' };
+            let riskHtml = '';
+            riskKeys.forEach(k => {
+                const level = risks[k] || 'Low';
+                const col = _severityColor(level);
+                const label = riskLabels[k];
+                riskHtml += `<div class="rounded-lg p-3 bg-navy-950/40 border border-slate-850 flex flex-col items-center gap-1">
+                    <span class="text-[9px] uppercase font-bold text-slate-500">${label}</span>
+                    <span class="text-xs font-black ${col}">${level}</span>
+                </div>`;
+            });
+            document.getElementById('db-scenario-risks').innerHTML = riskHtml;
+
+            document.getElementById('db-scenario-results').classList.remove('hidden');
+            document.getElementById('db-scenario-empty').classList.add('hidden');
+        } catch (e) {
+            console.warn('[CIC] Dashboard Scenario error:', e);
+        } finally {
+            if (loader) loader.classList.add('hidden');
+            if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="zap" class="w-3.5 h-3.5 inline-block mr-1"></i> Run Custom Simulation'; if (typeof lucide !== 'undefined') lucide.createIcons(); }
+        }
+    }
+
+    async function initDbCompareDropdowns() {
+        try {
+            const data = await _fetchComparison('', '');
+            const districts = data.all_districts || [];
+            if (!districts.length) return;
+
+            const d1El = document.getElementById('db-compare-d1');
+            const d2El = document.getElementById('db-compare-d2');
+            if (!d1El || !d2El) return;
+
+            const options = districts.map((d, i) => `<option value="${d.name}" ${i === 0 ? 'selected' : ''}>${d.name}</option>`).join('');
+            const options2 = districts.map((d, i) => `<option value="${d.name}" ${i === 1 ? 'selected' : ''}>${d.name}</option>`).join('');
+            d1El.innerHTML = `<option value="">Select District A</option>` + options;
+            d2El.innerHTML = `<option value="">Select District B</option>` + options2;
+
+            // Trigger comparison immediately for visual preview on first load
+            loadDbComparison().catch(e => console.warn('[CIC comparison init]', e));
+        } catch (e) {
+            console.warn('[CIC] Failed to load comparison districts:', e);
+        }
+    }
+
+    async function loadDbComparison() {
+        const d1 = document.getElementById('db-compare-d1')?.value || '';
+        const d2 = document.getElementById('db-compare-d2')?.value || '';
+        if (!d1 || !d2) return;
+
+        const data = await _fetchComparison(d1, d2);
+        const [distA, distB] = data.districts || [{}, {}];
+        if (!distA.name) return;
+
+        document.getElementById('db-cmp-head-d1').textContent = distA.name;
+        document.getElementById('db-cmp-head-d2').textContent = distB.name;
+
+        const vars = [
+            { key: 'temperature', label: 'Temperature', unit: '°C' },
+            { key: 'rainfall', label: 'Rainfall', unit: ' mm' },
+            { key: 'humidity', label: 'Humidity', unit: '%' },
+            { key: 'pressure', label: 'Pressure', unit: ' hPa' },
+            { key: 'wind_speed', label: 'Wind Speed', unit: ' kt' },
+            { key: 'lst', label: 'LST', unit: '°C' },
+            { key: 'sst', label: 'SST', unit: '°C' },
+        ];
+
+        const snapA = distA.snapshot || {};
+        const snapB = distB.snapshot || {};
+
+        let tableHtml = '';
+        vars.forEach(v => {
+            const va = snapA[v.key] !== undefined ? snapA[v.key] : '—';
+            const vb = snapB[v.key] !== undefined ? snapB[v.key] : '—';
+            const delta = (typeof va === 'number' && typeof vb === 'number') ? +(va - vb).toFixed(1) : null;
+            const col = _deltaColor(delta);
+            tableHtml += `<tr class="border-b border-slate-800/30 text-xs">
+                <td class="py-2.5 px-3 font-semibold text-slate-400">${v.label}</td>
+                <td class="py-2.5 px-3 text-center text-slate-200 font-bold">${va !== '—' ? va + v.unit : '—'}</td>
+                <td class="py-2.5 px-3 text-center text-slate-200 font-bold">${vb !== '—' ? vb + v.unit : '—'}</td>
+                <td class="py-2.5 px-3 text-right font-bold ${col}">${delta !== null ? (delta > 0 ? '+' : '') + delta + v.unit : '—'}</td>
+            </tr>`;
+        });
+
+        document.getElementById('db-compare-table-body').innerHTML = tableHtml;
+        document.getElementById('db-compare-table-card').classList.remove('hidden');
+
+        // Radar chart
+        _destroyChart('db-compare-chart');
+        const chartEl = document.getElementById('db-compare-chart');
+        document.getElementById('db-compare-chart-card').classList.remove('hidden');
+        chartEl.innerHTML = '';
+
+        const radarVars = ['temperature', 'rainfall', 'humidity', 'wind_speed', 'lst'];
+        const aVals = radarVars.map(k => snapA[k] || 0);
+        const bVals = radarVars.map(k => snapB[k] || 0);
+
+        const radarOpts = {
+            ..._baseChartOptions(),
+            chart: { ..._baseChartOptions().chart, type: 'radar', height: 260 },
+            series: [{ name: distA.name, data: aVals }, { name: distB.name, data: bVals }],
+            labels: radarVars.map(k => k.charAt(0).toUpperCase() + k.slice(1).replace('_', ' ')),
+            colors: ['#22d3ee', '#f97316'],
+            markers: { size: 3 },
+            fill: { opacity: 0.15 },
+            stroke: { width: 2 },
+        };
+
+        _cicCharts['db-compare-chart'] = new ApexCharts(chartEl, radarOpts);
+        _cicCharts['db-compare-chart'].render();
+
+        document.getElementById('db-compare-empty').classList.add('hidden');
+    }
+
+    async function loadDbTrends(forceRefresh = false) {
+        const lat = _getLat(), lng = _getLng();
+        const variable = document.getElementById('db-trend-variable')?.value || 'temperature';
+        const period = document.getElementById('db-trend-period')?.value || 'daily';
+        const ck = _cacheKey(`trend:${variable}:${period}`, lat, lng);
+
+        let data = forceRefresh ? null : _cache[ck];
+        if (!data) {
+            data = await _fetchTrends(variable, period, lat, lng);
+            _cache[ck] = data;
+        }
+
+        _destroyChart('db-trend-chart');
+        const chartEl = document.getElementById('db-trend-chart');
+        chartEl.innerHTML = '';
+
+        const colors = { temperature: '#f97316', rainfall: '#3b82f6', humidity: '#14b8a6', wind: '#22d3ee', pressure: '#a855f7', lst: '#f43f5e', sst: '#6366f1' };
+        const color = colors[variable] || '#22d3ee';
+
+        const opts = {
+            ..._baseChartOptions(),
+            chart: { ..._baseChartOptions().chart, type: 'bar', height: 260, id: 'db-trend-chart-instance' },
+            series: [{ name: variable.charAt(0).toUpperCase() + variable.slice(1), data: data.values || [] }],
+            xaxis: { ..._baseChartOptions().xaxis, categories: data.labels || [], tickAmount: 10 },
+            colors: [color],
+            plotOptions: { bar: { columnWidth: '70%', borderRadius: 2 } },
+            fill: { type: 'gradient', gradient: { type: 'vertical', shadeIntensity: 0.4, opacityFrom: 0.95, opacityTo: 0.6 } },
+            dataLabels: { enabled: false },
+            yaxis: { ..._baseChartOptions().yaxis, labels: { ..._baseChartOptions().yaxis.labels, formatter: v => `${v} ${data.unit || ''}` } },
+        };
+
+        _cicCharts['db-trend-chart'] = new ApexCharts(chartEl, opts);
+        _cicCharts['db-trend-chart'].render();
+    }
+
+    function _switchDbTab(tabId) {
+        _dbCurrentTab = tabId;
+        document.querySelectorAll('.db-view-content').forEach(el => el.classList.add('hidden'));
+        const target = document.getElementById(`db-view-${tabId}`);
+        if (target) target.classList.remove('hidden');
+
+        document.querySelectorAll('.db-tab-btn').forEach(btn => {
+            const active = btn.dataset.dbTab === tabId;
+            btn.classList.toggle('active-db-tab', active);
+            btn.classList.toggle('text-cyan-400', active);
+            btn.classList.toggle('bg-cyan-500/10', active);
+            btn.classList.toggle('border-cyan-500/20', active);
+            btn.classList.toggle('text-slate-400', !active);
+        });
+
+        _lazyLoadDbTab(tabId);
+    }
+
+    function _lazyLoadDbTab(tabId) {
+        switch (tabId) {
+            case 'observation': loadDbObservation().catch(e => console.warn('[DB obs]', e)); break;
+            case 'prediction':  loadDbPrediction().catch(e => console.warn('[DB pred]', e)); break;
+            case 'scenario':
+                if (!document.getElementById('db-scenario-table')?.children.length) {
+                    runDbScenario().catch(e => console.warn('[DB scenario]', e));
+                }
+                break;
+            case 'compare':     initDbCompareDropdowns().catch(e => console.warn('[DB compare]', e)); break;
+            case 'trends':      loadDbTrends().catch(e => console.warn('[DB trend]', e)); break;
+        }
+    }
+
+    function onDashboardOpen() {
+        const locEl = document.getElementById('db-location-indicator');
+        if (locEl) {
+            locEl.innerHTML = `<i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-400"></i> ${AppState.selectedDistrict || 'Andhra Pradesh'}`;
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        if (!_dbInitialized) {
+            // Setup dashboard sub-navigation buttons
+            document.querySelectorAll('.db-tab-btn').forEach(btn => {
+                btn.addEventListener('click', () => _switchDbTab(btn.dataset.dbTab));
+            });
+
+            // Bind selectors events
+            document.getElementById('db-obs-load-btn')?.addEventListener('click', () => loadDbObservation(true).catch(e => console.warn(e)));
+            document.getElementById('db-trend-load-btn')?.addEventListener('click', () => loadDbTrends(true).catch(e => console.warn(e)));
+            document.getElementById('db-scenario-run-btn')?.addEventListener('click', () => runDbScenario().catch(e => console.warn(e)));
+            document.getElementById('db-compare-run-btn')?.addEventListener('click', () => loadDbComparison().catch(e => console.warn(e)));
+
+            // Connect sliders to labels
+            const sliders = [
+                { id: 'db-sim-temp', valId: 'db-sim-temp-val', unit: '°C' },
+                { id: 'db-sim-rain', valId: 'db-sim-rain-val', unit: '%' },
+                { id: 'db-sim-humidity', valId: 'db-sim-humidity-val', unit: '%' },
+                { id: 'db-sim-wind', valId: 'db-sim-wind-val', unit: ' kt' },
+                { id: 'db-sim-pressure', valId: 'db-sim-pressure-val', unit: ' hPa' }
+            ];
+
+            sliders.forEach(s => {
+                const el = document.getElementById(s.id);
+                if (el) {
+                    el.addEventListener('input', (e) => {
+                        const valEl = document.getElementById(s.valId);
+                        if (valEl) valEl.textContent = `${e.target.value > 0 && s.unit === '°C' ? '+' : ''}${e.target.value}${s.unit}`;
+                    });
+                }
+            });
+
+            // Preset selects sync
+            const selectEl = document.getElementById('db-scenario-select');
+            if (selectEl) {
+                selectEl.addEventListener('change', (e) => {
+                    const preset = e.target.value;
+                    if (!preset) return;
+                    const vals = SCENARIO_PRESETS[preset] || {};
+                    // Set sliders
+                    const slidersMap = {
+                        'db-sim-temp': vals.temp_delta || 0,
+                        'db-sim-rain': vals.rain_delta || 0,
+                        'db-sim-humidity': vals.humidity_change || 0,
+                        'db-sim-wind': 0, // default
+                        'db-sim-pressure': 0 // default
+                    };
+                    for (const [id, val] of Object.entries(slidersMap)) {
+                        const input = document.getElementById(id);
+                        if (input) {
+                            input.value = val;
+                            input.dispatchEvent(new Event('input'));
+                        }
+                    }
+                });
+            }
+
+            // Reset button binding
+            document.getElementById('db-sim-reset-btn')?.addEventListener('click', () => {
+                const defaults = {
+                    'db-sim-temp': 0.0,
+                    'db-sim-rain': 0,
+                    'db-sim-humidity': 0,
+                    'db-sim-wind': 0,
+                    'db-sim-pressure': 0
+                };
+                for (const [id, val] of Object.entries(defaults)) {
+                    const input = document.getElementById(id);
+                    if (input) {
+                        input.value = val;
+                        input.dispatchEvent(new Event('input'));
+                    }
+                }
+                const selectEl = document.getElementById('db-scenario-select');
+                if (selectEl) selectEl.value = '';
+            });
+
+            // Bind prediction horizon buttons
+            document.querySelectorAll('.db-horizon-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    _dbActiveHorizon = btn.dataset.dbHorizon;
+                    document.querySelectorAll('.db-horizon-btn').forEach(b => {
+                        b.classList.toggle('active-horizon', b.dataset.dbHorizon === _dbActiveHorizon);
+                        b.classList.toggle('bg-cyan-500', b.dataset.dbHorizon === _dbActiveHorizon);
+                        b.classList.toggle('text-navy-900', b.dataset.dbHorizon === _dbActiveHorizon);
+                        b.classList.toggle('text-slate-400', b.dataset.dbHorizon !== _dbActiveHorizon);
+                    });
+                    loadDbPrediction().catch(e => console.warn(e));
+                });
+            });
+
+            _dbInitialized = true;
+        }
+
+        _switchDbTab(_dbCurrentTab);
+    }
+
+    // ── Public API ─────────────────────────────────────────────────────────
+    function init() {
+        _bindEvents();
+        _switchTab('snapshot');
+        _isOpen = true;
+    }
+
+    function refresh() {
+        _cache = {};
+        _snapshotData = null;
+        if (AppState.activePanel === 'climate-intel') {
+            _lazyLoadTab(_currentTab);
+        } else if (AppState.activePanel === 'analytics') {
+            onDashboardOpen();
+        }
+    }
+
+    return { init, refresh, loadSnapshot, loadRisk, loadAnomalies, loadInsights, loadTwinStatus, onDashboardOpen };
+})();
+
+// ── Hook CIC into panel open mechanism ────────────────────────────────────
+// Wrap the existing panel activation to trigger CIC.init() on first open
+(function () {
+    let _cicInitialized = false;
+
+    const _origActivatePanel = typeof activatePanel !== 'undefined' ? activatePanel : null;
+
+    // Intercept nav clicks for analytics and climate-intel panels
+    document.addEventListener('DOMContentLoaded', () => {
+        const initCIC = () => {
+            if (!_cicInitialized) {
+                CIC.init();
+                _cicInitialized = true;
+            } else {
+                CIC.refresh();
+            }
+        };
+
+        document.querySelectorAll('.nav-item[data-panel="analytics"], .nav-item[data-panel="climate-intel"]').forEach(link => {
+            link.addEventListener('click', () => {
+                setTimeout(initCIC, 80);
+            });
+        });
+    });
+
+    // Also hook into existing app state changes for location updates
+    const _origUpdateMapData = typeof updateMapData === 'function' ? updateMapData : null;
+    if (_origUpdateMapData) {
+        window.updateMapData = function () {
+            _origUpdateMapData.apply(this, arguments);
+            if (_cicInitialized) {
+                const p1 = document.getElementById('panel-analytics');
+                const p2 = document.getElementById('panel-climate-intel');
+                if ((p1 && !p1.classList.contains('hidden')) || (p2 && !p2.classList.contains('hidden'))) {
+                    CIC.refresh();
+                }
+            }
+        };
+    }
+})();

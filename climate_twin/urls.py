@@ -11,6 +11,7 @@ urlpatterns = [
     path('weather/', views.index, {'panel': 'weather'}, name='weather'),
     path('forecast/', views.index, {'panel': 'forecast'}, name='forecast'),
     path('analytics/', views.index, {'panel': 'analytics'}, name='analytics'),
+    path('climate-intel/', views.index, {'panel': 'climate-intel'}, name='climate_intel'),
     path('digital-twin/', views.index, {'panel': 'digital-twin'}, name='digital_twin'),
     path('simulator/', views.index, {'panel': 'simulator'}, name='simulator'),
     path('satellite/', views.index, {'panel': 'satellite'}, name='satellite'),
@@ -36,6 +37,15 @@ urlpatterns = [
     path('api/predict-simulate/', api_views.SimulateView.as_view(), name='api_simulate'),
     path('api/risk/', api_views.RiskView.as_view(), name='api_risk'),
     path('api/model-status/', api_views.ModelStatusView.as_view(), name='api_model_status'),
+
+    # ─── Climate Intelligence Center API Layer ───────────────────────────────
+    path('api/climate/snapshot/', api_views.ClimateSnapshotView.as_view(), name='api_climate_snapshot'),
+    path('api/climate/trends/', api_views.ClimateTrendsView.as_view(), name='api_climate_trends'),
+    path('api/climate/anomalies/', api_views.ClimateAnomalyView.as_view(), name='api_climate_anomalies'),
+    path('api/climate/insights/', api_views.ClimateInsightsView.as_view(), name='api_climate_insights'),
+    path('api/climate/comparison/', api_views.ClimateComparisonView.as_view(), name='api_climate_comparison'),
+    path('api/climate/story/', api_views.ClimateStoryView.as_view(), name='api_climate_story'),
+    path('api/climate/twin-status/', api_views.DigitalTwinStatusView.as_view(), name='api_climate_twin_status'),
 ]
 
 

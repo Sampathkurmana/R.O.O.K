@@ -96,8 +96,12 @@
                 <i data-lucide="cloud-rain" class="w-4.5 h-4.5 flex-shrink-0"></i>
                 <span class="sidebar-text">Forecast</span>
             </a>
-            <a href="#" data-panel="analytics" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Analytics">
-                <i data-lucide="bar-chart-3" class="w-4.5 h-4.5 flex-shrink-0"></i>
+            <a href="#" data-panel="climate-intel" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Climate Intelligence Center">
+                <i data-lucide="brain-circuit" class="w-4.5 h-4.5 flex-shrink-0"></i>
+                <span class="sidebar-text">Climate Intel</span>
+            </a>
+            <a href="#" data-panel="analytics" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg text-xs font-semibold text-slate-300" title="Analytics Dashboard">
+                <i data-lucide="layout-dashboard" class="w-4.5 h-4.5 flex-shrink-0"></i>
                 <span class="sidebar-text">Analytics</span>
             </a>
 
@@ -683,79 +687,210 @@
             </div>
         </div>
 
-        <!-- PANEL: ANALYTICS (relocated here to prevent cluttering bottom of map) -->
-        <div id="panel-analytics" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
-            <div class="glass-panel p-4 rounded-xl flex flex-col gap-3.5 h-full overflow-y-auto">
-                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
-                    <span class="text-xs uppercase font-bold tracking-wider text-slate-300">Analytics & Trends</span>
-                    <i data-lucide="bar-chart-3" class="w-4.5 h-4.5 text-cyan-400"></i>
-                </div>
-                <p class="text-[11px] text-slate-400">Detailed diagnostic summaries and multi-day climate trends across pilot locations.</p>
+        <!-- PANEL: CLIMATE INTEL (Simplified 5-Tab Analytics Hub) -->
+        <div id="panel-climate-intel" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
+            <div class="glass-panel rounded-xl flex flex-col h-full overflow-hidden" style="min-width:380px;">
 
-                <!-- Trend Chart container -->
-                <div class="bg-navy-950/30 border border-slate-800/40 p-3 rounded-lg flex flex-col gap-2">
-                    <span class="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">5 Day Rainfall Forecast (mm)</span>
-                    <div id="chart-trends" class="min-h-[160px]"></div>
-                </div>
-
-                <div class="h-[1px] bg-slate-800/40"></div>
-                <p class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Conditions Summary</p>
-
-                <!-- Current Conditions list (Vertically aligned for sidebar) -->
-                <div class="flex flex-col gap-2">
-                    <!-- Rainfall Card -->
-                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
-                        <div class="flex items-center gap-2.5">
-                            <div class="w-7 h-7 rounded bg-blue-500/10 flex items-center justify-center">
-                                <i data-lucide="cloud-rain" class="w-4 h-4 text-blue-400"></i>
-                            </div>
-                            <span class="text-xs text-slate-300 font-semibold">Rainfall (24h)</span>
-                        </div>
-                        <span id="current-cond-rain" class="font-display font-extrabold text-sm text-white">12.4 mm</span>
+                <!-- CIC Header -->
+                <div class="flex items-center justify-between px-4 pt-4 pb-2.5 border-b border-slate-800/40 flex-shrink-0">
+                    <div class="flex flex-col">
+                        <span class="text-xs uppercase font-black tracking-wider text-slate-200">Climate Intel</span>
+                        <span class="text-[9px] font-medium text-slate-500 uppercase tracking-widest mt-0.5">Snapshot · Risk · Anomaly · Insights</span>
                     </div>
-                    <!-- Max Temp Card -->
-                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
-                        <div class="flex items-center gap-2.5">
-                            <div class="w-7 h-7 rounded bg-orange-500/10 flex items-center justify-center">
-                                <i data-lucide="thermometer" class="w-4 h-4 text-orange-400"></i>
-                            </div>
-                            <span class="text-xs text-slate-300 font-semibold">Max Temp</span>
-                        </div>
-                        <span id="current-cond-temp-max" class="font-display font-extrabold text-sm text-orange-400">33.1 °C</span>
-                    </div>
-                    <!-- Min Temp Card -->
-                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
-                        <div class="flex items-center gap-2.5">
-                            <div class="w-7 h-7 rounded bg-sky-500/10 flex items-center justify-center">
-                                <i data-lucide="thermometer-snowflake" class="w-4 h-4 text-sky-400"></i>
-                            </div>
-                            <span class="text-xs text-slate-300 font-semibold">Min Temp</span>
-                        </div>
-                        <span id="current-cond-temp-min" class="font-display font-extrabold text-sm text-sky-400">25.6 °C</span>
-                    </div>
-                    <!-- Humidity Card -->
-                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
-                        <div class="flex items-center gap-2.5">
-                            <div class="w-7 h-7 rounded bg-teal-500/10 flex items-center justify-center">
-                                <i data-lucide="droplet" class="w-4 h-4 text-teal-400"></i>
-                            </div>
-                            <span class="text-xs text-slate-300 font-semibold">Humidity</span>
-                        </div>
-                        <span id="current-cond-humidity" class="font-display font-extrabold text-sm text-white">78%</span>
-                    </div>
-                    <!-- Wind Speed Card -->
-                    <div class="bg-navy-950/40 border border-slate-800/40 p-2.5 rounded-lg flex items-center justify-between">
-                        <div class="flex items-center gap-2.5">
-                            <div class="w-7 h-7 rounded bg-cyan-500/10 flex items-center justify-center">
-                                <i data-lucide="wind" class="w-4 h-4 text-cyan-400"></i>
-                            </div>
-                            <span class="text-xs text-slate-300 font-semibold">Wind Speed</span>
-                        </div>
-                        <span id="current-cond-wind" class="font-display font-extrabold text-sm text-white">18 kmph <span class="text-[9px] text-cyan-400 font-normal">SW</span></span>
+                    <div class="flex items-center gap-2">
+                        <span id="cic-location-badge" class="text-[9px] px-2 py-0.5 rounded font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">Andhra Pradesh</span>
+                        <i data-lucide="brain-circuit" class="w-4.5 h-4.5 text-cyan-400"></i>
                     </div>
                 </div>
+
+                <!-- 5-Tab Navigation -->
+                <div class="flex-shrink-0 overflow-x-auto scrollbar-none border-b border-slate-800/40">
+                    <div class="flex min-w-max px-2 pt-1.5 pb-0 gap-0.5" id="cic-tab-nav">
+                        <button data-cic-tab="snapshot"    class="cic-tab-btn active-cic-tab flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-t border-b-2 border-cyan-400 text-cyan-400 transition-all whitespace-nowrap"><i data-lucide="camera" class="w-3 h-3"></i>Snapshot</button>
+                        <button data-cic-tab="risk"        class="cic-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-t border-b-2 border-transparent text-slate-500 hover:text-slate-300 transition-all whitespace-nowrap"><i data-lucide="shield-alert" class="w-3 h-3"></i>Risk</button>
+                        <button data-cic-tab="anomaly"     class="cic-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-t border-b-2 border-transparent text-slate-500 hover:text-slate-300 transition-all whitespace-nowrap"><i data-lucide="radar" class="w-3 h-3"></i>Anomaly</button>
+                        <button data-cic-tab="insights"    class="cic-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-t border-b-2 border-transparent text-slate-500 hover:text-slate-300 transition-all whitespace-nowrap"><i data-lucide="sparkles" class="w-3 h-3"></i>AI Insights</button>
+                        <button data-cic-tab="twinstatus"  class="cic-tab-btn flex items-center gap-1.5 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wider rounded-t border-b-2 border-transparent text-slate-500 hover:text-slate-300 transition-all whitespace-nowrap"><i data-lucide="cpu" class="w-3 h-3"></i>DT Status</button>
+                    </div>
+                </div>
+
+                <!-- Tab Content Area (scrollable) -->
+                <div class="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800 px-4 py-3">
+
+                    <!-- Loading overlay -->
+                    <div id="cic-loader" class="hidden absolute inset-0 bg-navy-950/80 z-50 flex flex-col items-center justify-center gap-2 rounded-xl">
+                        <span class="w-5 h-5 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin"></span>
+                        <span class="text-[9px] font-mono text-cyan-400 uppercase tracking-widest animate-pulse">Querying Digital Twin...</span>
+                    </div>
+
+                    <!-- ═══════════════════════════════════════════ -->
+                    <!-- TAB 1: CLIMATE SNAPSHOT                      -->
+                    <!-- ═══════════════════════════════════════════ -->
+                    <div id="cic-tab-snapshot" class="cic-tab-content flex flex-col gap-3">
+                        <!-- Delta Period Selector -->
+                        <div class="flex items-center gap-1 bg-navy-950/60 p-1 rounded-lg border border-slate-800/80 w-full">
+                            <button data-delta="vs_yesterday"    class="cic-delta-btn active-delta flex-1 py-1 text-[9px] font-bold rounded uppercase tracking-wider bg-cyan-500 text-navy-900 transition-all">Yesterday</button>
+                            <button data-delta="vs_last_week"    class="cic-delta-btn flex-1 py-1 text-[9px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">Last Week</button>
+                            <button data-delta="vs_monthly_avg"  class="cic-delta-btn flex-1 py-1 text-[9px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">Monthly</button>
+                            <button data-delta="vs_seasonal_avg" class="cic-delta-btn flex-1 py-1 text-[9px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">Seasonal</button>
+                        </div>
+
+                        <!-- 12-Variable Snapshot Grid -->
+                        <div class="grid grid-cols-2 gap-2" id="cic-snapshot-grid">
+                            <!-- Dynamically populated -->
+                            <div class="col-span-2 py-6 text-center text-slate-500 text-xs italic">Loading climate snapshot...</div>
+                        </div>
+
+                        <!-- Source Badge -->
+                        <div class="flex items-center justify-between text-[9px] text-slate-500 pt-1 border-t border-slate-800/30">
+                            <span id="cic-snapshot-source">Source: —</span>
+                            <span id="cic-snapshot-time">—</span>
+                        </div>
+                    </div>
+
+                    <!-- ═══════════════════════════════════════════ -->
+                    <!-- ═══════════════════════════════════════════ -->
+                    <!-- TAB 5: CLIMATE RISK INTELLIGENCE             -->
+                    <!-- ═══════════════════════════════════════════ -->
+                    <div id="cic-tab-risk" class="cic-tab-content hidden flex flex-col gap-3">
+                        <!-- Risk Gauge Grid (8 indicators) -->
+                        <div class="grid grid-cols-2 gap-2" id="cic-risk-gauges">
+                            <!-- Populated dynamically -->
+                            <div class="col-span-2 py-6 text-center text-slate-500 text-xs italic">Loading risk assessment...</div>
+                        </div>
+
+                        <!-- Water Stress & Crop Stress Progress Bars -->
+                        <div class="flex flex-col gap-2.5 pt-1 border-t border-slate-800/30">
+                            <div class="flex flex-col gap-1.5">
+                                <div class="flex justify-between text-[10px]">
+                                    <span class="text-slate-400 font-semibold">Water Stress Index</span>
+                                    <span id="cic-risk-water-val" class="font-bold text-cyan-400">—</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="cic-risk-water-bar" class="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-cyan-500 to-blue-500" style="width:0%"></div>
+                                </div>
+                            </div>
+                            <div class="flex flex-col gap-1.5">
+                                <div class="flex justify-between text-[10px]">
+                                    <span class="text-slate-400 font-semibold">Crop Stress Index</span>
+                                    <span id="cic-risk-crop-val" class="font-bold text-amber-400">—</span>
+                                </div>
+                                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                                    <div id="cic-risk-crop-bar" class="h-full rounded-full transition-all duration-700 bg-gradient-to-r from-amber-500 to-orange-500" style="width:0%"></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- District Risk Rankings Table -->
+                        <div class="flex flex-col gap-1.5">
+                            <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider">District Risk Ranking</span>
+                            <div id="cic-risk-district-table" class="overflow-x-auto max-h-[160px] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-800">
+                                <div class="text-xs text-slate-500 italic text-center py-2">Loading...</div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <!-- ═══════════════════════════════════════════ -->
+                    <!-- TAB 8: CLIMATE ANOMALY DETECTION             -->
+                    <!-- ═══════════════════════════════════════════ -->
+                    <div id="cic-tab-anomaly" class="cic-tab-content hidden flex flex-col gap-3">
+                        <!-- Anomaly Summary -->
+                        <div class="flex items-center justify-between bg-navy-950/40 border border-slate-800/40 rounded-lg px-3 py-2">
+                            <span class="text-[10px] text-slate-400">Anomalies Detected</span>
+                            <span id="cic-anomaly-count" class="text-lg font-black text-white font-display">—</span>
+                        </div>
+
+                        <!-- Anomaly Cards List -->
+                        <div id="cic-anomaly-list" class="flex flex-col gap-2">
+                            <div class="py-6 text-center text-slate-500 text-xs italic">Loading anomaly data...</div>
+                        </div>
+
+                        <!-- Comparison Legend -->
+                        <div class="flex items-center gap-3 text-[9px] text-slate-500 border-t border-slate-800/30 pt-2">
+                            <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-rose-500"></span>Critical</div>
+                            <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-orange-500"></span>High</div>
+                            <div class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Medium</div>
+                            <span class="ml-auto">vs Seasonal Avg</span>
+                        </div>
+                    </div>
+
+                    <!-- ═══════════════════════════════════════════ -->
+                    <!-- TAB 9: AI CLIMATE INSIGHTS + STORY CHAIN     -->
+                    <!-- ═══════════════════════════════════════════ -->
+                    <div id="cic-tab-insights" class="cic-tab-content hidden flex flex-col gap-3">
+                        <!-- Sub-tabs: Insights | Story -->
+                        <div class="flex border border-slate-800/60 rounded bg-navy-950/40 p-0.5 text-[9px] font-bold">
+                            <button data-insight-tab="insights" class="insight-sub-btn flex-1 py-1.5 rounded bg-slate-800/80 text-cyan-400 transition">💡 AI Insights</button>
+                            <button data-insight-tab="story"    class="insight-sub-btn flex-1 py-1.5 rounded text-slate-400 hover:text-white transition">📖 Climate Story</button>
+                        </div>
+
+                        <!-- AI Insights list -->
+                        <div id="cic-insights-panel" class="flex flex-col gap-2">
+                            <!-- Model source -->
+                            <div class="flex items-center gap-2 bg-emerald-500/5 border border-emerald-500/15 rounded px-2.5 py-1.5">
+                                <i data-lucide="brain" class="w-3 h-3 text-emerald-400"></i>
+                                <span id="cic-insights-model" class="text-[9px] font-bold text-emerald-400 uppercase tracking-wider">XGBoost + Risk Engine</span>
+                            </div>
+                            <div id="cic-insights-list" class="flex flex-col gap-2">
+                                <div class="py-6 text-center text-slate-500 text-xs italic">Loading AI insights...</div>
+                            </div>
+                        </div>
+
+                        <!-- Climate Story Chain -->
+                        <div id="cic-story-panel" class="hidden flex flex-col gap-2">
+                            <div id="cic-story-chain" class="flex flex-col gap-2">
+                                <div class="py-6 text-center text-slate-500 text-xs italic">Loading climate story...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- ═══════════════════════════════════════════ -->
+                    <!-- TAB 10: DIGITAL TWIN STATUS                  -->
+                    <!-- ═══════════════════════════════════════════ -->
+                    <div id="cic-tab-twinstatus" class="cic-tab-content hidden flex flex-col gap-3">
+                        <!-- Engine Health Grid -->
+                        <div class="flex flex-col gap-0">
+                            <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider mb-1.5">Engine Health</span>
+                            <div id="cic-engine-grid" class="flex flex-col gap-1.5">
+                                <!-- Populated dynamically -->
+                                <div class="text-xs text-slate-500 italic text-center py-3">Loading engine status...</div>
+                            </div>
+                        </div>
+
+                        <!-- Model & DB Status -->
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="bg-navy-950/40 border border-slate-800/40 rounded-lg p-2.5 flex flex-col gap-1">
+                                <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider">AI Model</span>
+                                <span id="cic-model-name" class="text-[10px] font-bold text-white">—</span>
+                                <span id="cic-model-status" class="text-[9px] text-emerald-400">—</span>
+                            </div>
+                            <div class="bg-navy-950/40 border border-slate-800/40 rounded-lg p-2.5 flex flex-col gap-1">
+                                <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Database</span>
+                                <span id="cic-db-obs-count" class="text-[10px] font-bold text-white">—</span>
+                                <span id="cic-db-status" class="text-[9px] text-emerald-400">—</span>
+                            </div>
+                        </div>
+
+                        <!-- Data Provenance Table -->
+                        <div class="flex flex-col gap-1.5">
+                            <span class="text-[9px] uppercase font-bold text-slate-500 tracking-wider">Data Provenance</span>
+                            <div id="cic-sources-list" class="flex flex-col gap-1.5">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+
+                        <!-- Sync Timestamp -->
+                        <div class="text-[9px] text-slate-500 text-center border-t border-slate-800/30 pt-2">
+                            Last synchronized: <span id="cic-twin-timestamp">—</span>
+                        </div>
+                    </div>
+
+                </div><!-- /tab content -->
             </div>
         </div>
+
+
 
         <!-- PANEL: DIGITAL TWIN -->
         <div id="panel-digital-twin" class="floating-panel-wrapper w-full h-full flex flex-col gap-4 pointer-events-auto hidden">
@@ -1561,8 +1696,351 @@
                 </div>
             </div>
         </div>
-
     </div>
+
+        <!-- PANEL: ANALYTICS (Full-Screen Web Dashboard) -->
+        <div id="panel-analytics" class="floating-panel-wrapper absolute top-4 left-72 right-4 bottom-4 z-20 glass-panel rounded-xl flex hidden p-6 overflow-hidden pointer-events-auto">
+            <!-- Left Dashboard Navigation Sub-Sidebar -->
+            <div class="w-56 flex flex-col gap-1 border-r border-slate-800/40 pr-4 flex-shrink-0">
+                <div class="mb-4">
+                    <h3 class="text-xs uppercase font-extrabold tracking-wider text-slate-200">Analytics Center</h3>
+                    <p class="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Observation & Analysis</p>
+                </div>
+                <button data-db-tab="observation" class="db-tab-btn active-db-tab flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 w-full text-left transition-all">
+                    <i data-lucide="activity" class="w-4 h-4"></i>
+                    <span>Observations</span>
+                </button>
+                <button data-db-tab="prediction" class="db-tab-btn flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 w-full text-left transition-all">
+                    <i data-lucide="trending-up" class="w-4 h-4"></i>
+                    <span>AI Predictions</span>
+                </button>
+                <button data-db-tab="scenario" class="db-tab-btn flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 w-full text-left transition-all">
+                    <i data-lucide="sliders" class="w-4 h-4"></i>
+                    <span>Scenario Simulator</span>
+                </button>
+                <button data-db-tab="compare" class="db-tab-btn flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 w-full text-left transition-all">
+                    <i data-lucide="columns-2" class="w-4 h-4"></i>
+                    <span>Regional Compare</span>
+                </button>
+                <button data-db-tab="trends" class="db-tab-btn flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-semibold text-slate-400 hover:text-slate-200 w-full text-left transition-all">
+                    <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                    <span>Trends Analysis</span>
+                </button>
+                
+                <div class="mt-auto p-3 bg-navy-950/40 border border-slate-800/50 rounded-lg flex flex-col gap-1 text-[10px]">
+                    <span class="text-slate-500 font-bold uppercase tracking-wider">Active Location</span>
+                    <span id="db-location-indicator" class="text-slate-300 font-semibold flex items-center gap-1"><i data-lucide="map-pin" class="w-3.5 h-3.5 text-cyan-400"></i> Prakasam</span>
+                </div>
+            </div>
+            
+            <!-- Main Content Area of the Dashboard -->
+            <div class="flex-1 pl-6 overflow-y-auto relative h-full flex flex-col">
+                <!-- Loading overlay -->
+                <div id="db-loader" class="hidden absolute inset-0 bg-navy-950/80 z-50 flex flex-col items-center justify-center gap-2 rounded-xl">
+                    <span class="w-5 h-5 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin"></span>
+                    <span class="text-[9px] font-mono text-cyan-400 uppercase tracking-widest animate-pulse">Running Deep Engine...</span>
+                </div>
+                
+                <!-- Dashboard Sub-Views -->
+                
+                <!-- 1. OBSERVATIONS SUB-VIEW -->
+                <div id="db-view-observation" class="db-view-content flex flex-col gap-4 h-full">
+                    <div class="flex justify-between items-center flex-shrink-0">
+                        <div>
+                            <h2 class="text-base font-bold text-white">Historical Climate Observations</h2>
+                            <p class="text-[11px] text-slate-400">View and track historical weather logs from IMD stations across Andhra Pradesh.</p>
+                        </div>
+                        <div class="flex gap-2.5">
+                            <select id="db-obs-variable" class="bg-navy-950/60 border border-slate-800 text-slate-200 text-[11px] rounded px-3 py-1.5 focus:outline-none focus:border-cyan-500">
+                                <option value="temperature">Temperature (°C)</option>
+                                <option value="rainfall">Rainfall (mm)</option>
+                                <option value="humidity">Humidity (%)</option>
+                                <option value="wind">Wind Speed (knots)</option>
+                                <option value="pressure">Pressure (hPa)</option>
+                                <option value="lst">LST (°C)</option>
+                                <option value="sst">SST (°C)</option>
+                            </select>
+                            <select id="db-obs-period" class="bg-navy-950/60 border border-slate-800 text-slate-200 text-[11px] rounded px-3 py-1.5 focus:outline-none focus:border-cyan-500">
+                                <option value="hourly">Hourly</option>
+                                <option value="daily" selected>Daily (14d)</option>
+                                <option value="weekly">Weekly (12w)</option>
+                                <option value="monthly">Monthly (12m)</option>
+                                <option value="seasonal">Seasonal</option>
+                            </select>
+                            <button id="db-obs-load-btn" class="px-4 py-1.5 text-xs font-bold rounded bg-cyan-500 hover:bg-cyan-600 text-navy-950 transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Load Data
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4 flex-1 min-h-0">
+                        <!-- Chart Card -->
+                        <div class="bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col gap-2 col-span-2 min-h-[300px]">
+                            <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Time Series Trend</span>
+                            <div id="db-obs-chart" class="flex-1 w-full min-h-0"></div>
+                        </div>
+                        
+                        <!-- Observation Stats Panel -->
+                        <div class="bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col gap-3.5 overflow-y-auto">
+                            <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Statistical Summary</span>
+                            <div id="db-obs-summary" class="text-xs text-slate-400 leading-relaxed flex flex-col gap-2.5">
+                                <div class="p-3 bg-slate-900/30 rounded border border-slate-850">
+                                    <span class="text-slate-500 block text-[9px] uppercase tracking-wide">Select a variable and click Load Data to view the climatological summary of the chosen district.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 2. AI PREDICTIONS SUB-VIEW -->
+                <div id="db-view-prediction" class="db-view-content flex flex-col gap-4 h-full hidden">
+                    <div class="flex justify-between items-center flex-shrink-0">
+                        <div>
+                            <h2 class="text-base font-bold text-white">AI Climate Forecast & Predictions</h2>
+                            <p class="text-[11px] text-slate-400">Local predictive ensembles showing projected weather variances with confidence bounds.</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="flex items-center gap-1.5 bg-navy-950/60 p-1 rounded-lg border border-slate-800/80">
+                                <button data-db-horizon="24h"     class="db-horizon-btn active-horizon px-3 py-1 text-[10px] font-bold rounded uppercase tracking-wider bg-cyan-500 text-navy-900 transition-all">24h</button>
+                                <button data-db-horizon="72h"     class="db-horizon-btn px-3 py-1 text-[10px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">72h</button>
+                                <button data-db-horizon="7day"    class="db-horizon-btn px-3 py-1 text-[10px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">7-Day</button>
+                                <button data-db-horizon="monthly" class="db-horizon-btn px-3 py-1 text-[10px] font-bold rounded uppercase tracking-wider text-slate-400 hover:text-white transition-all">Monthly</button>
+                            </div>
+                            <div class="flex items-center gap-2 bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-3 py-1.5 text-xs text-emerald-400">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span id="db-pred-model-name" class="font-bold uppercase tracking-wider">XGBoost Ensemble</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-4 gap-4 flex-1 min-h-0">
+                        <!-- Predictions Chart Card -->
+                        <div class="bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col gap-2 col-span-3 min-h-[300px]">
+                            <div class="flex justify-between items-center mb-1 flex-shrink-0">
+                                <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold">Predictive Forecast Confidence Band</span>
+                                <span id="db-pred-confidence" class="text-[10px] text-slate-400 font-mono">Confidence Acc: —</span>
+                            </div>
+                            <div id="db-pred-chart" class="flex-1 w-full min-h-0"></div>
+                        </div>
+                        
+                        <!-- Cards & Metadata Panel -->
+                        <div class="flex flex-col gap-3.5 overflow-y-auto">
+                            <div class="bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col gap-2.5">
+                                <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Variable Highlights</span>
+                                <div class="flex flex-col gap-2" id="db-pred-cards">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                            
+                            <div id="db-pred-timestamp" class="text-[10px] text-slate-500 text-center mt-auto">Forecast generated: —</div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 3. SCENARIO SIMULATOR SUB-VIEW -->
+                <div id="db-view-scenario" class="db-view-content flex flex-col gap-4 h-full hidden">
+                    <div class="flex justify-between items-center flex-shrink-0">
+                        <div>
+                            <h2 class="text-base font-bold text-white">Interactive Climate Scenario Simulator</h2>
+                            <p class="text-[11px] text-slate-400">Perturb environmental metrics to simulate custom anomalies and view downstream risk impacts.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <select id="db-scenario-select" class="bg-navy-950/60 border border-slate-800 text-slate-200 text-[11px] rounded px-3 py-1.5 focus:outline-none focus:border-cyan-500">
+                                <option value="">— Select Scenario Preset —</option>
+                                <option value="heatwave">🌡️ Heatwave</option>
+                                <option value="coldwave">❄️ Cold Wave</option>
+                                <option value="flood">🌊 Flood</option>
+                                <option value="heavyrain">🌧️ Heavy Rain</option>
+                                <option value="cyclone">🌀 Cyclone</option>
+                                <option value="drought">☀️ Drought</option>
+                                <option value="monsoondelay">📅 Delayed Monsoon</option>
+                                <option value="monsoonadv">✅ Early Monsoon</option>
+                                <option value="marine">🔥 High SST / Marine Heat</option>
+                                <option value="uhi">🏙️ Urban Heat Island</option>
+                            </select>
+                            <button id="db-scenario-run-btn" class="px-4 py-1.5 text-xs font-bold rounded bg-purple-600 hover:bg-purple-700 text-white transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="zap" class="w-3.5 h-3.5"></i> Run Custom Simulation
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-4 flex-1 min-h-0">
+                        <!-- Custom Perturbation Controls (Left Column) -->
+                        <div class="bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col gap-3.5 overflow-y-auto">
+                            <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold block">Perturbation Controls</span>
+                            
+                            <div class="flex flex-col gap-3">
+                                <!-- Temp -->
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex justify-between text-[10.5px]">
+                                        <span class="text-slate-300 font-medium">Temperature Deviation</span>
+                                        <span id="db-sim-temp-val" class="text-orange-400 font-bold">0.0°C</span>
+                                    </div>
+                                    <input type="range" id="db-sim-temp" min="-5.0" max="5.0" step="0.1" value="0.0" class="accent-orange-500 h-1 rounded bg-slate-800/80">
+                                </div>
+                                <!-- Rain -->
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex justify-between text-[10.5px]">
+                                        <span class="text-slate-300 font-medium">Rainfall Variance</span>
+                                        <span id="db-sim-rain-val" class="text-blue-400 font-bold">0%</span>
+                                    </div>
+                                    <input type="range" id="db-sim-rain" min="-50" max="50" step="1" value="0" class="accent-blue-500 h-1 rounded bg-slate-800/80">
+                                </div>
+                                <!-- Humidity -->
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex justify-between text-[10.5px]">
+                                        <span class="text-slate-300 font-medium">Humidity Offset</span>
+                                        <span id="db-sim-humidity-val" class="text-teal-400 font-bold">0%</span>
+                                    </div>
+                                    <input type="range" id="db-sim-humidity" min="-20" max="20" step="1" value="0" class="accent-teal-500 h-1 rounded bg-slate-800/80">
+                                </div>
+                                <!-- Wind -->
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex justify-between text-[10.5px]">
+                                        <span class="text-slate-300 font-medium">Wind Speed Offset</span>
+                                        <span id="db-sim-wind-val" class="text-cyan-400 font-bold">0 kt</span>
+                                    </div>
+                                    <input type="range" id="db-sim-wind" min="-50" max="50" step="1" value="0" class="accent-cyan-500 h-1 rounded bg-slate-800/80">
+                                </div>
+                                <!-- Pressure -->
+                                <div class="flex flex-col gap-1">
+                                    <div class="flex justify-between text-[10.5px]">
+                                        <span class="text-slate-300 font-medium">Surface Pressure Offset</span>
+                                        <span id="db-sim-pressure-val" class="text-emerald-400 font-bold">0 hPa</span>
+                                    </div>
+                                    <input type="range" id="db-sim-pressure" min="-20" max="20" step="1" value="0" class="accent-emerald-500 h-1 rounded bg-slate-800/80">
+                                </div>
+                            </div>
+                            
+                            <button id="db-sim-reset-btn" class="w-full py-1.5 text-[10px] font-bold rounded bg-slate-800 hover:bg-slate-700 text-slate-400 mt-2 transition">Reset Sliders</button>
+                        </div>
+                        
+                        <!-- Simulation Outputs (Right Columns) -->
+                        <div class="col-span-2 flex flex-col gap-4 overflow-y-auto">
+                            <!-- Comparisons & Delta -->
+                            <div id="db-scenario-results" class="hidden bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col gap-2 flex-1">
+                                <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-1">Perturbed State Output</span>
+                                <div class="overflow-x-auto rounded-lg border border-slate-800/40">
+                                    <table class="w-full text-xs">
+                                        <thead>
+                                            <tr class="bg-navy-950/60 text-slate-500 uppercase tracking-wider text-[9px]">
+                                                <th class="py-2 px-3 text-left font-black">Variable</th>
+                                                <th class="py-2 px-3 text-center font-black">Baseline</th>
+                                                <th class="py-2 px-3 text-center font-black">→</th>
+                                                <th class="py-2 px-3 text-center font-black">Simulated</th>
+                                                <th class="py-2 px-3 text-right font-black">Shift (Δ)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="db-scenario-table" class="divide-y divide-slate-800/30 text-slate-300">
+                                            <!-- Dynamically populated -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2 mt-2" id="db-scenario-risks">
+                                    <!-- Risk gauge metrics -->
+                                </div>
+                            </div>
+                            
+                            <!-- Empty State -->
+                            <div id="db-scenario-empty" class="bg-navy-950/30 border border-slate-800/40 p-6 rounded-xl flex flex-col items-center justify-center flex-1 text-center text-slate-500 italic text-xs">
+                                Select a preset scenario above or customize the perturbation sliders, then click 'Run Custom Simulation' to evaluate model outputs.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 4. REGIONAL COMPARISON SUB-VIEW -->
+                <div id="db-view-compare" class="db-view-content flex flex-col gap-4 h-full hidden">
+                    <div class="flex justify-between items-center flex-shrink-0">
+                        <div>
+                            <h2 class="text-base font-bold text-white">Regional Climate Comparison</h2>
+                            <p class="text-[11px] text-slate-400">Compare climatological variables side-by-side between two districts in Andhra Pradesh.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <select id="db-compare-d1" class="bg-navy-950/60 border border-slate-800 text-slate-200 text-[11px] rounded px-3 py-1.5 focus:outline-none focus:border-cyan-500">
+                                <option value="">Select District A</option>
+                            </select>
+                            <select id="db-compare-d2" class="bg-navy-950/60 border border-slate-800 text-slate-200 text-[11px] rounded px-3 py-1.5 focus:outline-none focus:border-cyan-500">
+                                <option value="">Select District B</option>
+                            </select>
+                            <button id="db-compare-run-btn" class="px-4 py-1.5 text-xs font-bold rounded bg-cyan-500 hover:bg-cyan-600 text-navy-950 transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="columns-2" class="w-3.5 h-3.5"></i> Compare
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4 flex-1 min-h-0">
+                        <!-- Left: Side-by-side Table -->
+                        <div id="db-compare-table-card" class="bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col hidden overflow-y-auto">
+                            <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-2">Metrics Grid</span>
+                            <div class="overflow-x-auto rounded-lg border border-slate-800/40">
+                                <table class="w-full text-xs">
+                                    <thead>
+                                        <tr class="bg-navy-950/60 text-[9px] uppercase tracking-wider text-slate-500">
+                                            <th class="py-2.5 px-3 text-left font-black">Variable</th>
+                                            <th class="py-2.5 px-3 text-center font-black" id="db-cmp-head-d1">District A</th>
+                                            <th class="py-2.5 px-3 text-center font-black" id="db-cmp-head-d2">District B</th>
+                                            <th class="py-2.5 px-3 text-right font-black">Variance (Δ)</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="db-compare-table-body" class="divide-y divide-slate-800/30 text-slate-300">
+                                        <!-- Populated dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Right: Radar/Spider Chart Overlay -->
+                        <div id="db-compare-chart-card" class="bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col items-center justify-center hidden">
+                            <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold block self-start mb-2">Spider Web Overlay</span>
+                            <div id="db-compare-chart" class="w-full flex-1 min-h-0"></div>
+                        </div>
+                        
+                        <!-- Empty State -->
+                        <div id="db-compare-empty" class="col-span-2 bg-navy-950/30 border border-slate-800/40 p-6 rounded-xl flex flex-col items-center justify-center text-center text-slate-500 italic text-xs">
+                            Select two districts above and click 'Compare' to render side-by-side tables and radar chart analysis.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 5. MULTI-VARIABLE TRENDS SUB-VIEW -->
+                <div id="db-view-trends" class="db-view-content flex flex-col gap-4 h-full hidden">
+                    <div class="flex justify-between items-center flex-shrink-0">
+                        <div>
+                            <h2 class="text-base font-bold text-white">Multi-Variable Trends Overlay</h2>
+                            <p class="text-[11px] text-slate-400">Examine climatology trends overlaying multiple parameters at once.</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <select id="db-trend-variable" class="bg-navy-950/60 border border-slate-800 text-slate-200 text-[11px] rounded px-3 py-1.5 focus:outline-none focus:border-cyan-500">
+                                <option value="temperature">Temperature</option>
+                                <option value="rainfall">Rainfall</option>
+                                <option value="humidity">Humidity</option>
+                                <option value="wind">Wind Speed</option>
+                                <option value="pressure">Pressure</option>
+                                <option value="lst">LST</option>
+                                <option value="sst">SST</option>
+                            </select>
+                            <select id="db-trend-period" class="bg-navy-950/60 border border-slate-800 text-slate-200 text-[11px] rounded px-3 py-1.5 focus:outline-none focus:border-cyan-500">
+                                <option value="hourly">Hourly</option>
+                                <option value="daily" selected>Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                                <option value="seasonal">Seasonal</option>
+                            </select>
+                            <button id="db-trend-load-btn" class="px-4 py-1.5 text-xs font-bold rounded bg-cyan-500 hover:bg-cyan-600 text-navy-950 transition flex items-center justify-center gap-1.5">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Refresh Chart
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="bg-navy-950/30 border border-slate-800/40 p-4 rounded-xl flex flex-col flex-1 min-h-0">
+                        <span class="text-[10px] uppercase tracking-wider text-slate-400 font-bold block mb-2 flex-shrink-0">Overlay Chart</span>
+                        <div id="db-trend-chart" class="flex-1 w-full min-h-0"></div>
+                    </div>
+                </div>
+                
+            </div>
+        </div>
 
 </div>
 
