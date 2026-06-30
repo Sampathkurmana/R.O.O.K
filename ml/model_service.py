@@ -3,12 +3,7 @@ ml/model_service.py
 ====================
 Plug-and-Play XGBoost Model Service for R.O.O.K.
 
-Usage:
-  1. Drop your trained .pkl files into ml/models/
-  2. This service auto-discovers and loads them on first call.
-  3. Falls back to IDW spatial interpolation if no models found.
-
-DO NOT edit the inference path below unless you change ap_feature_schema.py.
+This service loads all trained models from ml/models/ and makes unified predictions.
 """
 
 import os
@@ -16,29 +11,23 @@ import math
 import json
 import logging
 from pathlib import Path
+import datetime
 
 import numpy as np
+import pandas as pd
+import joblib
 
 logger = logging.getLogger('rook.ml')
 
 MODELS_DIR = Path(__file__).parent / 'models'
 
-
 class ModelService:
     """
     Singleton that loads XGBoost models once and serves predictions.
-    
-    Models expected in ml/models/:
-        xgb_rainfall.pkl        — XGBoost rainfall regressor
-        xgb_temperature.pkl     — XGBoost temperature regressor
-        feature_scaler.pkl      — (optional) StandardScaler fitted on training data
     """
     _instance = None
-    _rainfall_model = None
-    _temperature_model = None
-    _scaler = None
+    _models = {}
     _ready = False
-    _model_meta = {}
 
     def __new__(cls):
         if cls._instance is None:
@@ -50,280 +39,179 @@ class ModelService:
     def get_instance(cls):
         return cls()
 
-    # ─────────────────────────────────────────────────────────────────────────
-    # Model Loading
-    # ─────────────────────────────────────────────────────────────────────────
-
     def _load_models(self):
         """Auto-discover and load .pkl model files from ml/models/."""
         try:
-            import joblib
-        except ImportError:
-            logger.warning('[ModelService] joblib not installed. pip install joblib')
-            return
-
-        rain_path   = MODELS_DIR / 'xgb_rainfall.pkl'
-        temp_path   = MODELS_DIR / 'xgb_temperature.pkl'
-        wind_path   = MODELS_DIR / 'xgb_windspeed.pkl'
-        scaler_path = MODELS_DIR / 'feature_scaler.pkl'
-        meta_path   = MODELS_DIR / 'model_meta.json'
-
-        if rain_path.exists() or temp_path.exists() or wind_path.exists():
-            try:
-                self._rainfall_model    = 'fake'
-                self._temperature_model = 'fake'
-                self._windspeed_model   = joblib.load(wind_path)
-                if scaler_path.exists():
-                    self._scaler = joblib.load(scaler_path)
-                    logger.info('[ModelService] Feature scaler loaded.')
-
-                if meta_path.exists():
-                    with open(meta_path) as f:
-                        self._model_meta = json.load(f)
-
+            targets = ['rainfall', 'temperature', 'humidity', 'surface_pressure_hpa', 'windspeed', 'sst', 'lst']
+            loaded_count = 0
+            for t in targets:
+                path = MODELS_DIR / f'xgb_{t}.pkl'
+                if path.exists():
+                    try:
+                        self._models[t] = joblib.load(path)
+                        loaded_count += 1
+                    except Exception as ex:
+                        logger.error(f"[ModelService] Failed to load model for {t}: {ex}")
+            
+            if loaded_count > 0:
                 self._ready = True
-                logger.info(
-                    f'[ModelService] ✅ XGBoost models loaded from {MODELS_DIR}. '
-                    f'Meta: {self._model_meta}'
-                )
-                self._write_meta()
-
-            except Exception as e:
-                logger.error(f'[ModelService] ❌ Failed to load models: {e}')
+                logger.info(f"[ModelService] Loaded {loaded_count} XGBoost models from {MODELS_DIR}")
+            else:
                 self._ready = False
-        else:
-            logger.info(
-                '[ModelService] ⚠️  No model .pkl files found in ml/models/. '
-                'Using IDW spatial fallback. Drop xgb_rainfall.pkl and '
-                'xgb_temperature.pkl into ml/models/ when ready.'
-            )
+                logger.warning("[ModelService] No model files found. Using IDW fallback.")
+        except Exception as e:
+            logger.error(f"[ModelService] Failed to load models: {e}")
             self._ready = False
 
-    def _write_meta(self):
-        """Write/update model_meta.json with load timestamp."""
-        from datetime import datetime
-        meta = {
-            'loaded_at': datetime.utcnow().isoformat(),
-            'rainfall_model':    'xgb_rainfall.pkl',
-            'temperature_model': 'xgb_temperature.pkl',
-            'scaler':            'feature_scaler.pkl' if self._scaler else None,
-            'schema_version':    '1.0',
-        }
-        try:
-            MODELS_DIR.mkdir(parents=True, exist_ok=True)
-            with open(MODELS_DIR / 'model_meta.json', 'w') as f:
-                json.dump(meta, f, indent=2)
-        except Exception:
-            pass
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Public Prediction API
-    # ─────────────────────────────────────────────────────────────────────────
-    def predict_windspeed(self, features: dict) -> float:
-        """Predicts windspeed using the loaded XGBoost model."""
-        if not self._ready or not hasattr(self, '_windspeed_model'):
-            return 14.0 # Fallback
-
-        try:
-            import pandas as pd
-            import datetime
-            
-            now = datetime.datetime.now()
-
-            # We must map your teammate's API features to the EXACT columns your CSV had
-            clean_features = {
-                'Latitude': features.get('lat', 15.9129),
-                'Longitude': features.get('lng', 79.7400),
-                'Rainfall': features.get('rain_lag1', 0.0), # using lag1 as a proxy
-                'Surface_Pressure_hPa': features.get('pressure_hpa', 1008.0),
-                'Temperature': features.get('tmax_lag1', 32.4),
-                'Humidity': features.get('humidity', 72.0),
-                'SST': 28.0, # XGBoost doesn't mind dummy data here if Is_Ocean is 0
-                'Is_Ocean': 0 if features.get('lng', 79) < 80.5 else 1, 
-                'Year': now.year,
-                'Month': now.month,
-                'Day': now.day,
-                'DayOfYear': now.timetuple().tm_yday
-            }
-
-            # Turn it into a Pandas DataFrame
-            df = pd.DataFrame([clean_features])
-            
-            # Make the prediction!
-            pred = self._windspeed_model.predict(df)[0]
-            
-            # Print it so we can see it in the terminal!
-            print(f"🌪️ XGBOOST PREDICTED WIND: {pred} kt")
-            
-            return float(pred)
-            
-        except Exception as e:
-            logger.error(f"[ModelService] Wind prediction error: {e}")
-            return 14.0 # Fallback
+    def _build_features(self, lat: float, lng: float, date_val: datetime.date) -> pd.DataFrame:
+        day_of_year = date_val.timetuple().tm_yday
+        is_ocean = 1 if lng > 83.2 else 0
+        month = date_val.month
+        month_sin = math.sin(2 * math.pi * month / 12)
+        month_cos = math.cos(2 * math.pi * month / 12)
         
+        row = {
+            'Latitude': lat,
+            'Longitude': lng,
+            'DayOfYear': day_of_year,
+            'Is_Ocean': is_ocean,
+            'month_sin': month_sin,
+            'month_cos': month_cos
+        }
+        return pd.DataFrame([row])
+
+    def predict_all(self, lat: float, lng: float, date_val: datetime.date) -> dict:
+        """
+        Predicts all variables using loaded XGBoost models. Falls back to default values if not loaded.
+        """
+        # Default fallback values from IDW or climatology
+        res = {
+            'temperature': 32.4,
+            'rainfall': 5.0,
+            'humidity': 70.0,
+            'pressure': 1009.0,
+            'wind': 12.0,
+            'lst': 34.0,
+            'sst': 28.0,
+        }
+        
+        if not self._ready:
+            return res
+
+        df_feat = self._build_features(lat, lng, date_val)
+        
+        for k in res.keys():
+            model_key = 'windspeed' if k == 'wind' else ('surface_pressure_hpa' if k == 'pressure' else k)
+            model = self._models.get(model_key)
+            if model:
+                try:
+                    pred_val = float(model.predict(df_feat)[0])
+                    if k == 'rainfall':
+                        pred_val = max(0.0, pred_val)
+                    elif k == 'humidity':
+                        pred_val = max(0.0, min(100.0, pred_val))
+                    res[k] = round(pred_val, 2)
+                except Exception as ex:
+                    logger.error(f"[ModelService] Failed prediction for {k}: {ex}")
+                    
+        return res
+
+    def predict_windspeed(self, features: dict) -> float:
+        lat = features.get('lat', 15.9)
+        lng = features.get('lng', 79.7)
+        date_val = datetime.date.today()
+        preds = self.predict_all(lat, lng, date_val)
+        return preds['wind']
+
     def predict_rainfall(self, features: dict) -> float | None:
-        """
-        Predict 24h rainfall (mm) for a given feature dict.
-        Returns None if model not loaded (triggers IDW fallback in views).
-        """
         if not self._ready:
             return None
-        from ml.ap_feature_schema import RAINFALL_FEATURES
-        try:
-            X = self._build_vector(features, RAINFALL_FEATURES)
-            result = float(self._rainfall_model.predict(X)[0])
-            return max(0.0, result)   # rainfall can't be negative
-        except Exception as e:
-            logger.error(f'[ModelService] Rainfall prediction error: {e}')
-            return None
+        lat = features.get('lat', 15.9)
+        lng = features.get('lng', 79.7)
+        date_val = datetime.date.today()
+        preds = self.predict_all(lat, lng, date_val)
+        return preds['rainfall']
 
     def predict_temperature(self, features: dict) -> dict | None:
-        """
-        Predict temperature (°C) for a given feature dict.
-        Returns {'tmax_c': float, 'tmin_c': float} or None.
-        """
         if not self._ready:
             return None
-        from ml.ap_feature_schema import TEMPERATURE_FEATURES
-        try:
-            X = self._build_vector(features, TEMPERATURE_FEATURES)
-            result = self._temperature_model.predict(X)[0]
-
-            # Handle single-output model (Tmax only) or multi-output [Tmax, Tmin]
-            if hasattr(result, '__len__') and len(result) >= 2:
-                return {'tmax_c': float(result[0]), 'tmin_c': float(result[1])}
-            else:
-                tmax = float(result)
-                return {'tmax_c': tmax, 'tmin_c': tmax - 5.5}  # Tmin estimate
-
-        except Exception as e:
-            logger.error(f'[ModelService] Temperature prediction error: {e}')
-            return None
+        lat = features.get('lat', 15.9)
+        lng = features.get('lng', 79.7)
+        date_val = datetime.date.today()
+        preds = self.predict_all(lat, lng, date_val)
+        tmax = preds['temperature']
+        return {'tmax_c': tmax, 'tmin_c': round(tmax - 5.5, 1)}
 
     def predict_simulation(self, base_features: dict, deltas: dict) -> dict:
         """
-        What-If simulation: apply parameter deltas and re-run prediction.
-        
-        Args:
-            base_features: feature dict for the selected location
-            deltas: {
-                'temp_delta': float,     # °C shift applied to lag temps
-                'rain_delta': float,     # % change applied to lag rainfall
-            }
-        
-        Returns:
-            {'rainfall_mm', 'tmax_c', 'tmin_c', 'risk', 'source'}
+        Runs what-if simulation by shifting base inputs.
         """
-        modified = {**base_features}
-
-        if 'temp_delta' in deltas and deltas['temp_delta'] != 0:
-            d = float(deltas['temp_delta'])
-            modified['tmax_lag1'] = modified.get('tmax_lag1', 33.0) + d
-            modified['tmin_lag1'] = modified.get('tmin_lag1', 24.0) + d
-            modified['tmax_lag2'] = modified.get('tmax_lag2', 33.0) + d
-            modified['tmin_lag2'] = modified.get('tmin_lag2', 24.0) + d
-
-        if 'rain_delta' in deltas and deltas['rain_delta'] != 0:
-            factor = 1.0 + (float(deltas['rain_delta']) / 100.0)
-            for lag in ['rain_lag1', 'rain_lag2', 'rain_lag3']:
-                modified[lag] = max(0.0, modified.get(lag, 5.0) * factor)
-
-        rain = self.predict_rainfall(modified)
-        temp = self.predict_temperature(modified)
-
-        # If model not ready, use IDW-based fallback estimate
-        if rain is None or temp is None:
-            from ml.fallback_idw import IDWFallback
-            rain, temp, _ = IDWFallback.predict(
-                modified.get('lat', 15.9),
-                modified.get('lng', 79.7)
-            )
-
-        risk = self._compute_risk(rain, temp, modified)
-
+        lat = base_features.get('lat', 15.9)
+        lng = base_features.get('lng', 79.7)
+        date_val = datetime.date.today()
+        
+        # Get baseline prediction
+        baseline = self.predict_all(lat, lng, date_val)
+        
+        # Apply deltas to baseline values to get perturbed state
+        temp_delta = float(deltas.get('temp_delta', 0.0))
+        rain_delta = float(deltas.get('rain_delta', 0.0))
+        humidity_change = float(deltas.get('humidity_change', 0.0))
+        wind_change = float(deltas.get('wind_change', 0.0))
+        pressure_change = float(deltas.get('pressure_change', 0.0))
+        
+        simulated = {
+            'temperature': round(baseline['temperature'] + temp_delta, 2),
+            'rainfall': round(max(0.0, baseline['rainfall'] * (1.0 + rain_delta / 100.0)), 2) if rain_delta != 0 else baseline['rainfall'],
+            'humidity': round(max(0.0, min(100.0, baseline['humidity'] + humidity_change)), 2),
+            'wind': round(max(0.0, baseline['wind'] + wind_change), 2),
+            'pressure': round(baseline['pressure'] + pressure_change, 2),
+            'lst': round(baseline['lst'] + temp_delta, 2),
+            'sst': round(baseline['sst'] + temp_delta, 2) if baseline['sst'] > 0 else 0.0,
+        }
+        
+        # Calculate risks
+        from climate_twin.services.core_engines import AnalyticsRiskEngine
+        risks = AnalyticsRiskEngine.calculate_risks({
+            "temperature": simulated["temperature"],
+            "rainfall": simulated["rainfall"],
+            "humidity": simulated["humidity"],
+            "pressure": simulated["pressure"],
+            "wind": simulated["wind"],
+            "lst": simulated["lst"],
+            "sst": simulated["sst"],
+            "temp_change": temp_delta,
+            "rainfall_change": rain_delta,
+            "humidity_change": humidity_change
+        })
+        
         return {
-            'rainfall_mm': rain,
-            'tmax_c': temp.get('tmax_c'),
-            'tmin_c': temp.get('tmin_c'),
-            'risk': risk,
-            'source': 'xgboost_simulation' if self._ready else 'idw_simulation',
+            'rainfall_mm': simulated['rainfall'],
+            'tmax_c': simulated['temperature'],
+            'tmin_c': round(simulated['temperature'] - 5.5, 1),
+            'risk': {
+                'drought': risks["drought_risk"],
+                'flood': risks["flood_risk"],
+                'heatwave': risks["heatwave_risk"],
+                'agri': risks["agriculture_risk"]
+            },
+            'source': 'xgboost_simulation' if self._ready else 'idw_simulation'
         }
 
     def get_status(self) -> dict:
-        """Return model loading status (used by /api/model-status/ endpoint)."""
         return {
             'loaded': self._ready,
-            'rainfall_model':    (MODELS_DIR / 'xgb_rainfall.pkl').exists(),
-            'temperature_model': (MODELS_DIR / 'xgb_temperature.pkl').exists(),
-            'scaler':            (MODELS_DIR / 'feature_scaler.pkl').exists(),
-            'meta': self._model_meta,
-            'models_dir': str(MODELS_DIR),
-        }
-
-    # ─────────────────────────────────────────────────────────────────────────
-    # Internal Helpers
-    # ─────────────────────────────────────────────────────────────────────────
-
-    def _build_vector(self, features: dict, schema: list) -> 'np.ndarray':
-        """
-        Construct the numpy feature array from a feature dict,
-        using schema order and filling missing values with FEATURE_DEFAULTS.
-        """
-        from ml.ap_feature_schema import FEATURE_DEFAULTS
-
-        # Compute seasonal encodings if not already present
-        month = float(features.get('month', FEATURE_DEFAULTS['month']))
-        features.setdefault('month_sin', math.sin(2 * math.pi * month / 12))
-        features.setdefault('month_cos', math.cos(2 * math.pi * month / 12))
-
-        vec = [
-            float(features.get(f, FEATURE_DEFAULTS.get(f, 0.0)))
-            for f in schema
-        ]
-        X = np.array(vec, dtype=np.float32).reshape(1, -1)
-
-        if self._scaler is not None:
-            X = self._scaler.transform(X)
-
-        return X
-
-    @staticmethod
-    def _compute_risk(rain: float, temp: dict, features: dict) -> dict:
-        """
-        Compute drought, flood, and heatwave risk indices
-        from predicted rainfall and temperature.
-        """
-        rain  = rain or 0.0
-        tmax  = (temp or {}).get('tmax_c', 33.0)
-
-        # Drought: low rain + high temp
-        if   rain < 1.0 and tmax > 38:  drought = 'High'
-        elif rain < 3.0 and tmax > 36:  drought = 'Medium'
-        else:                             drought = 'Low'
-
-        # Flood: heavy rainfall
-        if   rain > 50:   flood = 'High'
-        elif rain > 25:   flood = 'Medium'
-        else:              flood = 'Low'
-
-        # Heatwave: extreme temperature
-        if   tmax > 42:   heatwave = 'Extreme'
-        elif tmax > 40:   heatwave = 'High'
-        elif tmax > 37:   heatwave = 'Medium'
-        else:              heatwave = 'Low'
-
-        # Agriculture impact (simple stress proxy)
-        agri = 'Low'
-        if drought == 'High' or heatwave in ('High', 'Extreme'):
-            agri = 'High'
-        elif drought == 'Medium' or heatwave == 'Medium':
-            agri = 'Medium'
-
-        return {
-            'drought':   drought,
-            'flood':     flood,
-            'heatwave':  heatwave,
-            'agri':      agri,
+            'rainfall_model': 'rainfall' in self._models,
+            'temperature_model': 'temperature' in self._models,
+            'humidity_model': 'humidity' in self._models,
+            'pressure_model': 'surface_pressure_hpa' in self._models,
+            'windspeed_model': 'windspeed' in self._models,
+            'sst_model': 'sst' in self._models,
+            'lst_model': 'lst' in self._models,
+            'meta': {
+                'models_directory': str(MODELS_DIR),
+                'feature_names': ['Latitude', 'Longitude', 'DayOfYear', 'Is_Ocean', 'month_sin', 'month_cos']
+            }
         }
 
     @property

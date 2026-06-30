@@ -94,22 +94,32 @@ class ObservationEngine:
         insat = cls.load_insat(date_val, district)
         merged = cls.merge_datasets(imd, insat)
         
-        obs, created = ClimateObservation.objects.update_or_create(
-            date=date_val,
-            district=district,
-            defaults={
-                "latitude": merged["latitude"],
-                "longitude": merged["longitude"],
-                "rainfall": merged["rainfall"],
-                "temperature": merged["temperature"],
-                "humidity": merged["humidity"],
-                "pressure": merged["pressure"],
-                "wind": merged["wind"],
-                "lst": merged["lst"],
-                "sst": merged["sst"]
-            }
-        )
-        logger.info(f"Updated current state for {district.name} on {date_val} (Created: {created})")
+        defaults = {
+            "latitude": merged["latitude"],
+            "longitude": merged["longitude"],
+            "rainfall": merged["rainfall"],
+            "temperature": merged["temperature"],
+            "humidity": merged["humidity"],
+            "pressure": merged["pressure"],
+            "wind": merged["wind"],
+            "lst": merged["lst"],
+            "sst": merged["sst"]
+        }
+        obs_qs = ClimateObservation.objects.filter(date=date_val, district=district)
+        if obs_qs.exists():
+            obs = obs_qs.first()
+            for k, v in defaults.items():
+                setattr(obs, k, v)
+            obs.save()
+            if obs_qs.count() > 1:
+                obs_qs.exclude(pk=obs.pk).delete()
+        else:
+            obs = ClimateObservation.objects.create(
+                date=date_val,
+                district=district,
+                **defaults
+            )
+        logger.info(f"Updated current state for {district.name} on {date_val}")
         return obs
 
     @staticmethod
@@ -159,29 +169,25 @@ class PredictionEngine:
         """
         service = ModelService.get_instance()
         
-        # Build features payload
-        if not base_features:
-            base_features = {
-                'lat': lat, 'lng': lng,
-                'month': date_val.month,
-                'day_of_year': date_val.timetuple().tm_yday,
-                'elevation_m': 150.0,
-                'humidity': 72.0, 'pressure_hpa': 1008.0, 'wind_kt': 14.0,
-                'rain_lag1': 5.0, 'rain_lag2': 3.0, 'rain_lag3': 2.0,
-                'tmax_lag1': 33.0, 'tmin_lag1': 24.0,
-                'tmax_lag2': 33.0, 'tmin_lag2': 24.0,
-            }
-
-        rain = service.predict_rainfall(base_features)
-        temp_dict = service.predict_temperature(base_features)
-        wind = service.predict_windspeed(base_features)
-
-        if rain is None or temp_dict is None:
+        if service.is_ready:
+            preds = service.predict_all(lat, lng, date_val)
+            rain = preds['rainfall']
+            tmax = preds['temperature']
+            humidity = preds['humidity']
+            pressure = preds['pressure']
+            wind = preds['wind']
+            lst = preds['lst']
+            sst = preds['sst']
+        else:
             # Fallback to IDW
             from ml.fallback_idw import IDWFallback
             rain, temp_dict, _ = IDWFallback.predict(lat, lng)
-
-        tmax = temp_dict.get('tmax_c', 32.4)
+            tmax = temp_dict.get('tmax_c', 32.4)
+            humidity = 70.0
+            pressure = 1009.0
+            wind = 12.0
+            lst = tmax + 2.5
+            sst = tmax - 2.8 if lng > 83.2 else 0.0
         
         # Generate prediction confidence based on date offset
         days_offset = (date_val - datetime.date.today()).days
@@ -193,11 +199,11 @@ class PredictionEngine:
             "longitude": lng,
             "rainfall": round(float(rain), 2),
             "temperature": round(float(tmax), 1),
-            "humidity": round(float(base_features.get('humidity', 70.0)), 1),
-            "pressure": round(float(base_features.get('pressure_hpa', 1008.0)), 1),
+            "humidity": round(float(humidity), 1),
+            "pressure": round(float(pressure), 1),
             "wind": round(float(wind), 1),
-            "lst": round(float(tmax + 2.5), 1),
-            "sst": round(float(tmax - 2.8), 1) if lng > 80.5 else 0.0,
+            "lst": round(float(lst), 1),
+            "sst": round(float(sst), 1) if sst > 0 else 0.0,
             "prediction_confidence": round(confidence, 2),
             "horizon": horizon
         }
@@ -242,23 +248,33 @@ class PredictionEngine:
         """
         Saves prediction entry to database.
         """
-        pred, created = ClimatePrediction.objects.update_or_create(
-            date=pred_data["date"],
-            district=district,
-            horizon=pred_data["horizon"],
-            defaults={
-                "latitude": pred_data["latitude"],
-                "longitude": pred_data["longitude"],
-                "rainfall": pred_data["rainfall"],
-                "temperature": pred_data["temperature"],
-                "humidity": pred_data["humidity"],
-                "pressure": pred_data["pressure"],
-                "wind": pred_data["wind"],
-                "lst": pred_data["lst"],
-                "sst": pred_data["sst"],
-                "prediction_confidence": pred_data["prediction_confidence"]
-            }
-        )
+        defaults = {
+            "latitude": pred_data["latitude"],
+            "longitude": pred_data["longitude"],
+            "rainfall": pred_data["rainfall"],
+            "temperature": pred_data["temperature"],
+            "humidity": pred_data["humidity"],
+            "pressure": pred_data["pressure"],
+            "wind": pred_data["wind"],
+            "lst": pred_data["lst"],
+            "sst": pred_data["sst"],
+            "prediction_confidence": pred_data["prediction_confidence"]
+        }
+        pred_qs = ClimatePrediction.objects.filter(date=pred_data["date"], district=district, horizon=pred_data["horizon"])
+        if pred_qs.exists():
+            pred = pred_qs.first()
+            for k, v in defaults.items():
+                setattr(pred, k, v)
+            pred.save()
+            if pred_qs.count() > 1:
+                pred_qs.exclude(pk=pred.pk).delete()
+        else:
+            pred = ClimatePrediction.objects.create(
+                date=pred_data["date"],
+                district=district,
+                horizon=pred_data["horizon"],
+                **defaults
+            )
         return pred
 
     @staticmethod

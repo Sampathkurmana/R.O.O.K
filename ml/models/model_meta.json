@@ -1,5 +1,5 @@
 {
-  "loaded_at": "2026-06-30T05:44:13.186444",
+  "loaded_at": "2026-06-30T07:22:49.809385",
   "rainfall_model": "xgb_rainfall.pkl",
   "temperature_model": "xgb_temperature.pkl",
   "scaler": null,

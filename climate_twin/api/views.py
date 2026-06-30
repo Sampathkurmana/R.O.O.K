@@ -124,27 +124,37 @@ class WeatherAPIView(APIView):
             today = datetime.date.today()
 
             # --- 3. PUSH TO THE DATABASE (Exodia Format) ---
-            ClimateObservation.objects.update_or_create(
-                date=today,
-                latitude=lat,
-                longitude=lng,
-                defaults={
-                    'rainfall': rain,
-                    'pressure': owm_response['main']['pressure'], 
-                    'wind_speed': wind_speed_kmh,
-                    'temperature': temp,
-                    'humidity': owm_response['main']['humidity'],
-                    'wind_u': wind_u,
-                    'wind_v': wind_v,
-                    'sst': sst if sst is not None else temp,  
-                    'lst': lst if lst is not None else temp,  
-                    'is_ocean': is_ocean,
-                    'year': now.year,
-                    'month': now.month,
-                    'day': now.day,
-                    'day_of_year': now.timetuple().tm_yday
-                }
-            )
+            defaults = {
+                'rainfall': rain,
+                'pressure': owm_response['main']['pressure'], 
+                'wind_speed': wind_speed_kmh,
+                'temperature': temp,
+                'humidity': owm_response['main']['humidity'],
+                'wind_u': wind_u,
+                'wind_v': wind_v,
+                'sst': sst if sst is not None else temp,  
+                'lst': lst if lst is not None else temp,  
+                'is_ocean': is_ocean,
+                'year': now.year,
+                'month': now.month,
+                'day': now.day,
+                'day_of_year': now.timetuple().tm_yday
+            }
+            obs_qs = ClimateObservation.objects.filter(date=today, latitude=lat, longitude=lng)
+            if obs_qs.exists():
+                obs = obs_qs.first()
+                for k, v in defaults.items():
+                    setattr(obs, k, v)
+                obs.save()
+                if obs_qs.count() > 1:
+                    obs_qs.exclude(pk=obs.pk).delete()
+            else:
+                ClimateObservation.objects.create(
+                    date=today,
+                    latitude=lat,
+                    longitude=lng,
+                    **defaults
+                )
 
             # --- 4. FORMAT THE RESPONSE FOR APP.JS ---
             final_response = {
