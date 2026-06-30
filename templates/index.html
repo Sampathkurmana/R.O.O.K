@@ -11,7 +11,7 @@
     </div>
 
     <!-- 3D Earth space globe container -->
-    <div id="satellite-globe-container" class="absolute inset-0 w-full h-full z-10 pointer-events-auto hidden transition-all duration-500 bg-black">
+    <div id="satellite-globe-container" class="absolute inset-0 w-full h-full z-30 pointer-events-auto hidden transition-all duration-500 bg-black">
         <div id="cesiumContainer" class="w-full h-full"></div>
     </div>
 
@@ -22,7 +22,7 @@
     <div class="absolute inset-0 pointer-events-none border border-slate-500/5 z-10"></div>
 
     <!-- TOP NAVIGATION: Floating Glass Header -->
-    <header id="top-header" class="absolute top-4 left-72 right-4 h-16 z-10 flex items-center justify-between px-6 glass-panel rounded-xl transition-all duration-300">
+    <header id="top-header" class="absolute top-4 left-72 right-4 h-16 z-40 flex items-center justify-between px-6 glass-panel rounded-xl transition-all duration-300">
         <!-- Search Bar -->
         <div class="relative w-72">
             <input type="text" id="search-input" placeholder="Search city or district..." class="w-full h-9 bg-white border border-slate-300 rounded-lg px-4 pl-9 text-xs focus:outline-none focus:border-cyan-500 text-slate-900 placeholder-slate-400 transition-colors">
@@ -38,13 +38,13 @@
             <!-- Date Display -->
             <div class="flex items-center gap-1.5 bg-navy-950/30 px-3 py-1.5 rounded-lg border border-slate-800/40 text-xs text-slate-300">
                 <i data-lucide="calendar" class="w-3.5 h-3.5 text-cyan-400"></i>
-                <span>21 Jun 2025</span>
+                <span id="top-header-date">01 Jul 2026</span>
             </div>
             
             <!-- Time Display -->
             <div class="flex items-center gap-1.5 bg-navy-950/30 px-3 py-1.5 rounded-lg border border-slate-800/40 text-xs text-slate-300">
                 <i data-lucide="clock" class="w-3.5 h-3.5 text-cyan-400"></i>
-                <span>11:00 AM IST</span>
+                <span id="top-header-time">11:00 AM IST</span>
             </div>
 
             <!-- AP / Region Selector Dropdown -->
@@ -67,7 +67,7 @@
     </header>
 
     <!-- FLOATING SIDEBAR: Left Navigation -->
-    <aside id="sidebar" class="absolute left-4 top-4 bottom-4 w-64 z-20 glass-panel rounded-xl flex flex-col p-4 transition-all duration-300">
+    <aside id="sidebar" class="absolute left-4 top-4 bottom-4 w-64 z-40 glass-panel rounded-xl flex flex-col p-4 transition-all duration-300">
         <!-- Logo and Project Info -->
         <div id="sidebar-logo-container" class="flex flex-col items-center mb-5 border-b border-slate-800/40 pb-4 gap-1.5 overflow-hidden">
             <!-- PNG Logo -->
@@ -235,8 +235,8 @@
                     <option value="3">March</option>
                     <option value="4">April</option>
                     <option value="5">May</option>
-                    <option value="6" selected>June</option>
-                    <option value="7">July</option>
+                    <option value="6">June</option>
+                    <option value="7" selected>July</option>
                     <option value="8">August</option>
                     <option value="9">September</option>
                     <option value="10">October</option>
@@ -280,7 +280,7 @@
             <!-- Digital clock font time indicator -->
             <div class="flex items-center gap-2">
                 <i data-lucide="clock" class="w-4 h-4 text-cyan-400 animate-pulse"></i>
-                <span id="active-datetime-display" class="font-display font-black text-sm text-cyan-400 tracking-wider uppercase">15 Jun 2026, 11:00 IST</span>
+                <span id="active-datetime-display" class="font-display font-black text-sm text-cyan-400 tracking-wider uppercase">1 Jul 2026, 12:00 IST</span>
             </div>
             
             <!-- Model/Source operational indicator -->
@@ -1278,10 +1278,10 @@
         </div>
 
         <!-- PANEL: SATELLITE VIEW -->
-        <div id="panel-satellite" class="absolute inset-0 w-full h-full pointer-events-none hidden z-20">
+        <div id="panel-satellite" class="absolute inset-0 w-full h-full pointer-events-none hidden z-40">
             
             <!-- Top Left HUD: Satellite View Metadata & Sub-tabs -->
-            <div class="absolute left-72 top-4 glass-panel p-4 rounded-xl flex flex-col gap-2 pointer-events-auto w-[320px] shadow-2xl border border-slate-800/80">
+            <div class="absolute left-72 top-4 glass-panel p-4 rounded-xl flex flex-col gap-2 pointer-events-auto w-[320px] shadow-2xl border border-slate-800/80 hidden">
                 <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
                     <div class="flex flex-col">
                         <span class="text-xs uppercase font-extrabold tracking-wider text-slate-200">Satellite View</span>
@@ -1300,7 +1300,7 @@
             </div>
 
             <!-- Middle Left HUD: Map Layers Toggles -->
-            <div class="absolute left-72 top-44 glass-panel p-4 rounded-xl flex flex-col gap-2.5 pointer-events-auto w-[240px] shadow-2xl border border-slate-800/80">
+            <div class="absolute left-72 top-44 glass-panel p-4 rounded-xl flex flex-col gap-2.5 pointer-events-auto w-[240px] shadow-2xl border border-slate-800/80 hidden">
                 <span class="text-[9px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-800/40 pb-1.5">Map Layers</span>
                 <div class="flex flex-col gap-2">
                     <label class="flex items-center justify-between cursor-pointer text-[10.5px]">
@@ -1335,6 +1335,54 @@
                         <span class="text-slate-300 flex items-center gap-1.5"><i data-lucide="waves" class="w-3.5 h-3.5 text-indigo-400"></i> SST</span>
                         <input type="checkbox" id="sat-layer-sst" class="accent-cyan-500">
                     </label>
+                </div>
+            </div>
+
+            <!-- Middle-Bottom Left HUD: Orbital Assets & AI Fusion Core -->
+            <div class="absolute left-72 top-[380px] glass-panel p-4 rounded-xl flex flex-col gap-3 pointer-events-auto w-[320px] shadow-2xl border border-slate-800/80">
+                <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
+                    <span class="text-[9px] uppercase font-bold tracking-wider text-slate-500">Orbital Assets & AI Fusion</span>
+                    <span class="text-[8px] bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 px-1.5 py-0.5 rounded font-black uppercase tracking-wider animate-pulse">Sync Active</span>
+                </div>
+                
+                <!-- Satellite Assets Table -->
+                <div class="flex flex-col gap-1.5">
+                    <div class="grid grid-cols-12 text-[8px] uppercase font-bold text-slate-500 tracking-wider border-b border-slate-900/40 pb-1">
+                        <span class="col-span-5">Satellite</span>
+                        <span class="col-span-4">Engine</span>
+                        <span class="col-span-3 text-right">Status</span>
+                    </div>
+                    
+                    <div class="flex flex-col gap-1">
+                        <!-- INSAT-3DR -->
+                        <div class="grid grid-cols-12 text-[10px] py-1 items-center hover:bg-white/5 px-1 rounded cursor-pointer transition" onclick="focusSatelliteByName('INSAT-3DR')">
+                            <span class="col-span-5 font-bold text-slate-200 flex items-center gap-1">🛰 INSAT-3DR</span>
+                            <span class="col-span-4 text-cyan-400 font-medium">Atmosphere</span>
+                            <span class="col-span-3 text-right text-emerald-400 font-bold flex items-center justify-end gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>Active</span>
+                        </div>
+                        
+                        <!-- Oceansat-3 -->
+                        <div class="grid grid-cols-12 text-[10px] py-1 items-center hover:bg-white/5 px-1 rounded cursor-pointer transition" onclick="focusSatelliteByName('Oceansat-3')">
+                            <span class="col-span-5 font-bold text-slate-200 flex items-center gap-1">🛰 Oceansat-3</span>
+                            <span class="col-span-4 text-emerald-400 font-medium">Ocean</span>
+                            <span class="col-span-3 text-right text-emerald-400 font-bold flex items-center justify-end gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>Active</span>
+                        </div>
+                        
+                        <!-- Resourcesat-2A -->
+                        <div class="grid grid-cols-12 text-[10px] py-1 items-center hover:bg-white/5 px-1 rounded cursor-pointer transition" onclick="focusSatelliteByName('Resourcesat-2A')">
+                            <span class="col-span-5 font-bold text-slate-200 flex items-center gap-1">🛰 Resourcesat-2A</span>
+                            <span class="col-span-4 text-orange-400 font-medium">Land</span>
+                            <span class="col-span-3 text-right text-emerald-400 font-bold flex items-center justify-end gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>Active</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Live AI Fusion Stream Log -->
+                <div class="flex flex-col gap-1.5 mt-1">
+                    <span class="text-[8px] uppercase font-bold tracking-wider text-slate-500 border-b border-slate-800/40 pb-1">ROOK AI Fusion Stream</span>
+                    <div id="sat-ai-stream-log" class="bg-black/40 border border-slate-900/50 rounded-lg p-2 h-[100px] overflow-y-auto font-mono text-[9px] leading-relaxed text-slate-400 flex flex-col gap-1">
+                        <!-- Filled dynamically by JavaScript -->
+                    </div>
                 </div>
             </div>
 
@@ -1394,7 +1442,13 @@
                         <i data-lucide="rotate-cw" class="w-3 h-3 text-cyan-400"></i> Rotate
                     </button>
                     <button id="sat-ctrl-reset" class="py-1.5 font-bold rounded bg-slate-850 hover:bg-slate-800 border border-slate-800 text-slate-300 transition flex items-center justify-center gap-1">
-                        <i data-lucide="refresh-cw" class="w-3 h-3 text-cyan-400"></i> Reset
+                        <i data-lucide="globe" class="w-3 h-3 text-cyan-400"></i> Earth View
+                    </button>
+                    <button id="sat-ctrl-india" class="py-1.5 font-bold rounded bg-slate-850 hover:bg-slate-800 border border-slate-800 text-slate-300 transition flex items-center justify-center gap-1">
+                        <i data-lucide="map" class="w-3 h-3 text-cyan-400"></i> India View
+                    </button>
+                    <button id="sat-ctrl-ap" class="py-1.5 font-bold rounded bg-slate-850 hover:bg-slate-800 border border-slate-800 text-slate-300 transition flex items-center justify-center gap-1">
+                        <i data-lucide="navigation" class="w-3 h-3 text-cyan-400"></i> AP View
                     </button>
                     <button id="sat-ctrl-zoomin" class="py-1.5 font-bold rounded bg-slate-850 hover:bg-slate-800 border border-slate-800 text-slate-300 transition flex items-center justify-center gap-1 col-span-1">
                         <i data-lucide="zoom-in" class="w-3 h-3 text-cyan-400"></i> Zoom +
@@ -1408,7 +1462,7 @@
             <!-- Bottom Center HUD: Timeline Playback Controls -->
             <div class="absolute bottom-24 left-[340px] right-[280px] glass-panel p-4 rounded-xl pointer-events-auto flex flex-col gap-3 shadow-2xl border border-slate-800/80">
                 <div class="flex items-center justify-between border-b border-slate-800/40 pb-2">
-                    <span id="sat-pb-time-text" class="text-[10px] font-mono font-bold text-cyan-400">29 JUN 2026 | 14:00 IST</span>
+                    <span id="sat-pb-time-text" class="text-[10px] font-mono font-bold text-cyan-400">1 JUL 2026 | 12:00 IST</span>
                     <div class="flex items-center gap-1.5">
                         <button id="sat-speed-1x" class="sat-speed-btn text-[8px] font-bold px-1.5 py-0.5 rounded bg-slate-800 text-cyan-400">1x</button>
                         <button id="sat-speed-2x" class="sat-speed-btn text-[8px] font-bold px-1.5 py-0.5 rounded bg-navy-950 text-slate-400 hover:text-white">2x</button>
@@ -1428,87 +1482,59 @@
 
             <!-- Bottom Edge HUD: Climate Observation Cards Grid -->
             <div class="absolute bottom-4 left-72 right-4 flex gap-3 pointer-events-auto overflow-x-auto scrollbar-none">
-                <!-- Temp Card -->
-                <div class="glass-panel p-2.5 px-4 rounded-xl flex items-center gap-3 shadow-xl border border-slate-800/80 min-w-[140px] flex-1">
-                    <div class="w-8 h-8 rounded bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-400">
-                        <i data-lucide="thermometer" class="w-4.5 h-4.5"></i>
+                <!-- Rainfall Card -->
+                <div class="glass-panel p-3 px-4 rounded-xl flex flex-col justify-between shadow-2xl border-l-[3.5px] border-l-[#2196F3] border-t border-r border-b border-slate-800/80 min-w-[200px] flex-1">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Rainfall (24h)</span>
+                        <i data-lucide="cloud-rain" class="w-4 h-4 text-blue-400"></i>
                     </div>
-                    <div class="flex flex-col">
-                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-wider">Temp</span>
-                        <span id="sat-card-temp" class="text-xs font-black text-slate-200">33.1°C</span>
-                        <span class="text-[7.5px] text-orange-400 flex items-center gap-0.5"><i data-lucide="trending-up" class="w-2 h-2"></i> +1.8°C</span>
+                    <div class="flex flex-col mt-2">
+                        <span id="sat-card-rain" class="text-xl font-extrabold text-white tracking-wide">3.6 mm</span>
+                        <span id="sat-card-rain-diff" class="text-[8.5px] text-blue-400 mt-1 flex items-center gap-0.5 font-semibold">
+                            <i data-lucide="trending-down" class="w-2.5 h-2.5"></i> 8.6 mm vs yesterday
+                        </span>
                     </div>
                 </div>
 
-                <!-- Rain Card -->
-                <div class="glass-panel p-2.5 px-4 rounded-xl flex items-center gap-3 shadow-xl border border-slate-800/80 min-w-[140px] flex-1">
-                    <div class="w-8 h-8 rounded bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-                        <i data-lucide="cloud-rain" class="w-4.5 h-4.5"></i>
+                <!-- Temperature Card -->
+                <div class="glass-panel p-3 px-4 rounded-xl flex flex-col justify-between shadow-2xl border-l-[3.5px] border-l-[#FF6D00] border-t border-r border-b border-slate-800/80 min-w-[200px] flex-1">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Temperature</span>
+                        <i data-lucide="thermometer" class="w-4 h-4 text-orange-400"></i>
                     </div>
-                    <div class="flex flex-col">
-                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-wider">Rainfall</span>
-                        <span id="sat-card-rain" class="text-xs font-black text-slate-200">12.4 mm</span>
-                        <span class="text-[7.5px] text-blue-400 flex items-center gap-0.5"><i data-lucide="trending-down" class="w-2 h-2"></i> -18%</span>
+                    <div class="flex flex-col mt-2">
+                        <span id="sat-card-temp" class="text-xl font-extrabold text-white tracking-wide">24.0 °C</span>
+                        <span id="sat-card-temp-diff" class="text-[8.5px] text-orange-400 mt-1 flex items-center gap-0.5 font-semibold">
+                            <i data-lucide="trending-up" class="w-2.5 h-2.5"></i> 2.3 °C vs yesterday
+                        </span>
                     </div>
                 </div>
 
                 <!-- Humidity Card -->
-                <div class="glass-panel p-2.5 px-4 rounded-xl flex items-center gap-3 shadow-xl border border-slate-800/80 min-w-[140px] flex-1">
-                    <div class="w-8 h-8 rounded bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400">
-                        <i data-lucide="droplet" class="w-4.5 h-4.5"></i>
+                <div class="glass-panel p-3 px-4 rounded-xl flex flex-col justify-between shadow-2xl border-l-[3.5px] border-l-[#00C853] border-t border-r border-b border-slate-800/80 min-w-[200px] flex-1">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Humidity</span>
+                        <i data-lucide="droplet" class="w-4 h-4 text-emerald-400"></i>
                     </div>
-                    <div class="flex flex-col">
-                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-wider">Humidity</span>
-                        <span id="sat-card-humidity" class="text-xs font-black text-slate-200">78%</span>
-                        <span class="text-[7.5px] text-teal-400 flex items-center gap-0.5"><i data-lucide="trending-up" class="w-2 h-2"></i> +5%</span>
-                    </div>
-                </div>
-
-                <!-- Wind Card -->
-                <div class="glass-panel p-2.5 px-4 rounded-xl flex items-center gap-3 shadow-xl border border-slate-800/80 min-w-[140px] flex-1">
-                    <div class="w-8 h-8 rounded bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
-                        <i data-lucide="wind" class="w-4.5 h-4.5"></i>
-                    </div>
-                    <div class="flex flex-col">
-                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-wider">Wind Speed</span>
-                        <span id="sat-card-wind" class="text-xs font-black text-slate-200">18 km/h</span>
-                        <span class="text-[7.5px] text-cyan-400 flex items-center gap-0.5">NE</span>
+                    <div class="flex flex-col mt-2">
+                        <span id="sat-card-humidity" class="text-xl font-extrabold text-white tracking-wide">85.0%</span>
+                        <span id="sat-card-humidity-diff" class="text-[8.5px] text-emerald-400 mt-1 flex items-center gap-0.5 font-semibold">
+                            <i data-lucide="trending-up" class="w-2.5 h-2.5"></i> 5% vs yesterday
+                        </span>
                     </div>
                 </div>
 
-                <!-- Pressure Card -->
-                <div class="glass-panel p-2.5 px-4 rounded-xl flex items-center gap-3 shadow-xl border border-slate-800/80 min-w-[140px] flex-1">
-                    <div class="w-8 h-8 rounded bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                        <i data-lucide="gauge" class="w-4.5 h-4.5"></i>
+                <!-- Wind Speed Card -->
+                <div class="glass-panel p-3 px-4 rounded-xl flex flex-col justify-between shadow-2xl border-l-[3.5px] border-l-[#00E5FF] border-t border-r border-b border-slate-800/80 min-w-[200px] flex-1">
+                    <div class="flex justify-between items-start">
+                        <span class="text-[9px] font-black text-slate-500 uppercase tracking-widest">Wind Speed</span>
+                        <i data-lucide="wind" class="w-4 h-4 text-cyan-400"></i>
                     </div>
-                    <div class="flex flex-col">
-                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-wider">Pressure</span>
-                        <span id="sat-card-pressure" class="text-xs font-black text-slate-200">1008 hPa</span>
-                        <span class="text-[7.5px] text-emerald-400 flex items-center gap-0.5"><i data-lucide="trending-down" class="w-2 h-2"></i> -5 hPa</span>
-                    </div>
-                </div>
-
-                <!-- LST Card -->
-                <div class="glass-panel p-2.5 px-4 rounded-xl flex items-center gap-3 shadow-xl border border-slate-800/80 min-w-[140px] flex-1">
-                    <div class="w-8 h-8 rounded bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-                        <i data-lucide="sun" class="w-4.5 h-4.5"></i>
-                    </div>
-                    <div class="flex flex-col">
-                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-wider">LST</span>
-                        <span id="sat-card-lst" class="text-xs font-black text-slate-200">39.2°C</span>
-                        <span class="text-[7.5px] text-rose-400 flex items-center gap-0.5"><i data-lucide="trending-up" class="w-2 h-2"></i> +2.1°C</span>
-                    </div>
-                </div>
-
-                <!-- SST Card -->
-                <div class="glass-panel p-2.5 px-4 rounded-xl flex items-center gap-3 shadow-xl border border-slate-800/80 min-w-[140px] flex-1">
-                    <div class="w-8 h-8 rounded bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-                        <i data-lucide="waves" class="w-4.5 h-4.5"></i>
-                    </div>
-                    <div class="flex flex-col">
-                        <span class="text-[8px] font-bold text-slate-500 uppercase tracking-wider">SST</span>
-                        <span id="sat-card-sst" class="text-xs font-black text-slate-200">29.3°C</span>
-                        <span class="text-[7.5px] text-indigo-400 flex items-center gap-0.5"><i data-lucide="trending-up" class="w-2 h-2"></i> +1.6°C</span>
+                    <div class="flex flex-col mt-2">
+                        <span id="sat-card-wind" class="text-xl font-extrabold text-white tracking-wide">23.0 kmph</span>
+                        <span id="sat-card-wind-diff" class="text-[8.5px] text-cyan-400 mt-1 flex items-center gap-0.5 font-semibold">
+                            <i data-lucide="navigation-2" class="w-2.5 h-2.5"></i> 255
+                        </span>
                     </div>
                 </div>
             </div>
@@ -2048,5 +2074,5 @@
 <script>
     document.body.dataset.activePanel = "{{ active_panel }}";
 </script>
-<script src="{% static 'js/app.js' %}?v=5.0"></script>
+<script src="{% static 'js/app.js' %}?v=9.2"></script>
 {% endblock %}

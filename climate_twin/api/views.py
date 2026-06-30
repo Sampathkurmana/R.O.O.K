@@ -85,14 +85,26 @@ DEFAULT_AP_PLAYBACK_STATIONS = [
 #             # If the API fails, return a safe backup, NOT a 500 error
 #             return Response({"error": "Weather service unavailable", "details": str(e)}, status=503)
 
+def _safe_float(val, default=0.0):
+    if val is None:
+        return default
+    if isinstance(val, str):
+        val_lower = val.lower().strip()
+        if val_lower in ('null', 'undefined', ''):
+            return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
 class WeatherAPIView(APIView):
     """
     GET /api/weather/
     Fetches OpenWeatherMap (Core) + Open-Meteo (SST/LST), saves to DB, caches for 12 hours.
     """
     def get(self, request):
-        lat = float(request.GET.get('lat', 17.6868))
-        lng = float(request.GET.get('lng', 83.2185))
+        lat = _safe_float(request.GET.get('lat'), 17.6868)
+        lng = _safe_float(request.GET.get('lng'), 83.2185)
         
         # 1. THE 12-HOUR SHIELD 
         cache_key = f"weather_{round(lat, 2)}_{round(lng, 2)}"
@@ -206,11 +218,8 @@ class ForecastAPIView(APIView):
     Provides 24-hour hourly trend stubs and 7-day daily forecasts via PredictionEngine.
     """
     def get(self, request):
-        lat_str = request.GET.get('lat')
-        lng_str = request.GET.get('lng')
-        
-        lat = float(lat_str) if lat_str else 15.9129
-        lng = float(lng_str) if lng_str else 79.7400
+        lat = _safe_float(request.GET.get('lat'), 15.9129)
+        lng = _safe_float(request.GET.get('lng'), 79.7400)
 
         # Hourly forecast approximation parabola
         hourly = []
@@ -302,9 +311,9 @@ class SimulatorAPIView(APIView):
     Accepts temperature, rainfall, and humidity perturbations to compute simulated scenarios.
     """
     def post(self, request):
-        temp_change = float(request.data.get("temp_change", request.data.get("temp_delta", 0.0)))
-        rainfall_change = float(request.data.get("rainfall_change", request.data.get("rain_delta", 0.0)))
-        humidity_change = float(request.data.get("humidity_change", 0.0))
+        temp_change = _safe_float(request.data.get("temp_change", request.data.get("temp_delta")), 0.0)
+        rainfall_change = _safe_float(request.data.get("rainfall_change", request.data.get("rain_delta")), 0.0)
+        humidity_change = _safe_float(request.data.get("humidity_change"), 0.0)
         scenario_cat = request.data.get("scenario_category", "Custom")
 
         # Select a default state-wide baseline or centroid
@@ -462,8 +471,8 @@ class PredictView(APIView):
     Returns prediction outputs via PredictionEngine and AnalyticsRiskEngine.
     """
     def get(self, request):
-        lat = float(request.GET.get('lat', 15.9129))
-        lng = float(request.GET.get('lng', 79.7400))
+        lat = _safe_float(request.GET.get('lat'), 15.9129)
+        lng = _safe_float(request.GET.get('lng'), 79.7400)
         date_str = request.GET.get('date', datetime.date.today().isoformat())
         
         try:
@@ -479,8 +488,8 @@ class PredictView(APIView):
         # except (json.JSONDecodeError, AttributeError):
         body = request.data
 
-        lat = float(body.get('lat', 15.9129))
-        lng = float(body.get('lng', 79.7400))
+        lat = _safe_float(body.get('lat'), 15.9129)
+        lng = _safe_float(body.get('lng'), 79.7400)
         date_str = body.get('date', datetime.datetime.utcnow().isoformat()[:10])
         
         try:
@@ -548,21 +557,22 @@ class SimulateView(APIView):
     POST /api/predict-simulate/ or POST /api/simulate
     """
     def post(self, request):
-        body = request.data
         try:
-            lat = float(body.get('lat', 15.9129))
-            lng = float(body.get('lng', 79.7400))
-            temp_delta = float(body.get('temp_delta', body.get('temp_change', 0.0)))
-            rain_delta = float(body.get('rain_delta', body.get('rainfall_change', 0.0)))
-            hum_delta = float(body.get('humidity_change', body.get('humidity_delta', 0.0)))
-            wind_delta = float(body.get('wind_change', body.get('wind_delta', 0.0)))
-            press_delta = float(body.get('pressure_change', body.get('pressure_delta', 0.0)))
-            lst_delta = float(body.get('lst_change', body.get('lst_delta', 0.0)))
-            sst_delta = float(body.get('sst_change', body.get('sst_delta', 0.0)))
-            cloud_delta = float(body.get('cloud_change', body.get('cloud_cover_change', 0.0)))
-            scenario_cat = body.get('scenario_category', 'Custom')
-        except Exception as e:
-            print(f"🚨 [SIMULATE VIEW ERROR] {str(e)}")
+            body = json.loads(request.body)
+        except (json.JSONDecodeError, AttributeError):
+            body = request.data
+
+        lat = float(body.get('lat', 15.9129))
+        lng = float(body.get('lng', 79.7400))
+        temp_delta = float(body.get('temp_delta', body.get('temp_change', 0.0)))
+        rain_delta = float(body.get('rain_delta', body.get('rainfall_change', 0.0)))
+        hum_delta = float(body.get('humidity_change', body.get('humidity_delta', 0.0)))
+        wind_delta = float(body.get('wind_change', body.get('wind_delta', 0.0)))
+        press_delta = float(body.get('pressure_change', body.get('pressure_delta', 0.0)))
+        lst_delta = float(body.get('lst_change', body.get('lst_delta', 0.0)))
+        sst_delta = float(body.get('sst_change', body.get('sst_delta', 0.0)))
+        cloud_delta = float(body.get('cloud_change', body.get('cloud_cover_change', 0.0)))
+        scenario_cat = body.get('scenario_category', 'Custom')
 
         date_str = body.get('date')
         if date_str:
@@ -863,8 +873,18 @@ class PlaybackAPIView(APIView):
     """
     def get(self, request):
         datetime_str = request.GET.get("datetime")
+        hour_str = request.GET.get("hour")
         
-        # If datetime_str is not provided, fall back to legacy month/year/date queries
+        # If datetime_str is not provided, check if hour is provided. If not, fallback to legacy
+        if not datetime_str:
+            if hour_str:
+                date_str = request.GET.get("date")
+                if date_str:
+                    try:
+                        datetime_str = f"{date_str} {int(hour_str):02d}:00"
+                    except ValueError:
+                        pass
+            
         if not datetime_str:
             month = request.GET.get("month")
             year = request.GET.get("year")
@@ -912,10 +932,9 @@ class PlaybackAPIView(APIView):
         hour = dt.hour
         mode = request.GET.get("mode", "live").lower()
         
-        # Retrieve optional simulator parameters
-        temp_delta = float(request.GET.get("temp_delta", 0.0))
-        rain_delta = float(request.GET.get("rain_delta", 0.0))
-        humidity_change = float(request.GET.get("humidity_change", 0.0))
+        temp_delta = _safe_float(request.GET.get("temp_delta"), 0.0)
+        rain_delta = _safe_float(request.GET.get("rain_delta"), 0.0)
+        humidity_change = _safe_float(request.GET.get("humidity_change"), 0.0)
         scenario_category = request.GET.get("scenario_category", "Custom")
 
         # Map mode inputs and fetch baseline
@@ -929,20 +948,11 @@ class PlaybackAPIView(APIView):
         lat = float(lat_str) if lat_str else 15.9129
         lng = float(lng_str) if lng_str else 79.7400
         target_district = None
-        if districts:
-            target_district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
-        else:
-            districts = [
-                SimpleNamespace(
-                    id=idx,
-                    name=name,
-                    latitude=s_lat,
-                    longitude=s_lng,
-                    is_virtual=True
-                )
-                for idx, (name, s_lat, s_lng) in enumerate(DEFAULT_AP_PLAYBACK_STATIONS, start=1)
-            ]
-            target_district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
+        if lat_str and lng_str:
+            lat = float(lat_str)
+            lng = float(lng_str)
+            if len(districts) > 0:
+                target_district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
         if not target_district:
             target_district = districts[0] if districts else None
 
@@ -1322,7 +1332,18 @@ class PlaybackAPIView(APIView):
             charts_sst.append(round(h_sst, 1))
             charts_time.append(f"{h:02d}:00")
 
-        return Response({
+        td_data = next((d for d in grid_points if d["district"] == target_district_obj.name), None)
+        td_state = {
+            "temperature": td_data["temperature"] if td_data else 32.4,
+            "rainfall": td_data["rainfall"] if td_data else 5.0,
+            "humidity": td_data["humidity"] if td_data else 75.0,
+            "wind": td_data["wind_speed"] if td_data else 14.0,
+            "pressure": td_data["pressure"] if td_data else 1008.0,
+            "lst": td_data["lst"] if td_data else 34.0,
+            "sst": td_data["sst"] if td_data else 0.0
+        }
+
+        response_payload = {
             "mode": mode,
             "source": model_source,
             "model_source": model_source,
@@ -1352,7 +1373,14 @@ class PlaybackAPIView(APIView):
                 "lst": charts_lst,
                 "sst": charts_sst
             }
-        })
+        }
+
+        if mode in ['history', 'live']:
+            response_payload["observation"] = td_state
+        else:
+            response_payload["prediction"] = td_state
+
+        return Response(response_payload)
 
 
 class ModelStatusView(APIView):
@@ -1384,8 +1412,8 @@ class ClimateSnapshotView(APIView):
     yesterday, last week, monthly average, and seasonal average.
     """
     def get(self, request):
-        lat = float(request.GET.get('lat', 15.9129))
-        lng = float(request.GET.get('lng', 79.7400))
+        lat = _safe_float(request.GET.get('lat'), 15.9129)
+        lng = _safe_float(request.GET.get('lng'), 79.7400)
 
         # Resolve nearest district
         districts = District.objects.all()
@@ -1519,8 +1547,8 @@ class ClimateTrendsView(APIView):
     def get(self, request):
         variable = request.GET.get('variable', 'temperature')
         period = request.GET.get('period', 'daily')
-        lat = float(request.GET.get('lat', 15.9129))
-        lng = float(request.GET.get('lng', 79.7400))
+        lat = _safe_float(request.GET.get('lat'), 15.9129)
+        lng = _safe_float(request.GET.get('lng'), 79.7400)
 
         if variable not in self.VARIABLE_MAP:
             variable = 'temperature'
@@ -1667,8 +1695,8 @@ class ClimateAnomalyView(APIView):
     }
 
     def get(self, request):
-        lat = float(request.GET.get('lat', 15.9129))
-        lng = float(request.GET.get('lng', 79.7400))
+        lat = _safe_float(request.GET.get('lat'), 15.9129)
+        lng = _safe_float(request.GET.get('lng'), 79.7400)
         today = datetime.date.today()
 
         districts = District.objects.all()
@@ -1741,8 +1769,8 @@ class ClimateInsightsView(APIView):
     All text is backend-generated from engine outputs.
     """
     def get(self, request):
-        lat = float(request.GET.get('lat', 15.9129))
-        lng = float(request.GET.get('lng', 79.7400))
+        lat = _safe_float(request.GET.get('lat'), 15.9129)
+        lng = _safe_float(request.GET.get('lng'), 79.7400)
         today = datetime.date.today()
 
         districts = District.objects.all()
@@ -1890,8 +1918,8 @@ class ClimateStoryView(APIView):
     All text generated from backend engine outputs.
     """
     def get(self, request):
-        lat = float(request.GET.get('lat', 15.9129))
-        lng = float(request.GET.get('lng', 79.7400))
+        lat = _safe_float(request.GET.get('lat'), 15.9129)
+        lng = _safe_float(request.GET.get('lng'), 79.7400)
         today = datetime.date.today()
 
         districts = District.objects.all()

@@ -87,10 +87,38 @@ def index(request, panel='dashboard'):
     Renders the unified Climate Digital Twin dashboard, 
     pre-opening the active panel based on the URL context.
     """
+    import datetime
+    from climate_twin.models import ClimateObservation
+    today = datetime.date.today()
+    if not ClimateObservation.objects.filter(date=today).exists():
+        print(f"[R.O.O.K] Today's observations for {today} are missing. Seeding database in-process...")
+        try:
+            import populate_db
+            populate_db.seed_data()
+        except Exception as e:
+            print(f"[R.O.O.K] In-process database seeding failed: {e}")
+
     import ssl
     import urllib.request
     import json
     import os
+    import shutil
+    
+    # Copy generated satellite image to static folder
+    try:
+        src_img = r"C:\Users\Sampath Kurmana\.gemini\antigravity-ide\brain\20f7727b-6b5e-4f9e-90c9-e5ac844de4ad\realistic_satellite_1782814052647.png"
+        dst_img = os.path.join(settings.BASE_DIR, 'static', 'img', 'satellite.png')
+        if os.path.exists(src_img):
+            os.makedirs(os.path.dirname(dst_img), exist_ok=True)
+            shutil.copy(src_img, dst_img)
+            print("✓ [R.O.O.K] Generated realistic satellite image copied to static/img/satellite.png")
+        
+        # Cleanup temporary copy script
+        temp_script = os.path.join(settings.BASE_DIR, 'copy_image.py')
+        if os.path.exists(temp_script):
+            os.remove(temp_script)
+    except Exception as e:
+        print("Error copying generated satellite image:", e)
     
     geojson_dir = os.path.join(settings.BASE_DIR, 'static', 'geojson')
     os.makedirs(geojson_dir, exist_ok=True)

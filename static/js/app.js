@@ -67,7 +67,8 @@ const AppState = {
     windParticlesActive: false,
     cycloneLayers: [],
     cycloneLayersRight: [],
-    cycloneWindSpeed: 0
+    cycloneWindSpeed: 0,
+    forecastData: []
 };
 
 // Andhra Pradesh coordinates center & zoom bounds (post-split center)
@@ -149,7 +150,31 @@ const HUMIDITY_COLOR_STOPS = [
 ];
 
 
+function startLiveClock() {
+    function updateClock() {
+        const now = new Date();
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const day = String(now.getDate()).padStart(2, '0');
+        const month = months[now.getMonth()];
+        const year = now.getFullYear();
+        
+        const dateEl = document.getElementById("top-header-date");
+        if (dateEl) {
+            dateEl.innerText = `${day} ${month} ${year}`;
+        }
+        
+        const timeEl = document.getElementById("top-header-time");
+        if (timeEl) {
+            const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+            timeEl.innerText = `${timeStr} IST`;
+        }
+    }
+    updateClock();
+    setInterval(updateClock, 1000);
+}
+
 document.addEventListener("DOMContentLoaded", () => {
+    startLiveClock();
     // Initial active panel - read from main-layout div (Django sets it there via template)
     const mainLayout = document.querySelector(".main-layout[data-active-panel]");
     const initialPanel = (mainLayout && mainLayout.dataset.activePanel) || 'dashboard';
@@ -264,6 +289,7 @@ function initMap() {
     // ── queryLocation: calls /api/predict/ and updates the sidebar ────────────
     // ── queryLocation: calls /api/predict/ and updates the sidebar ────────────
     window.queryLocation = async function (lat, lng) {
+        fetchSixDayForecast(lat, lng);
         const nameEl = document.getElementById("clicked-area-name");
         const tempEl = document.getElementById("clicked-temp");
         const rainEl = document.getElementById("clicked-rain");
@@ -567,11 +593,6 @@ function selectDistrict(station) {
 
     // Zoom map closer
     AppState.map.setView(station.coords, 10, { animate: true, duration: 1.5 });
-
-    if (document.getElementById("playback-panel") && !document.getElementById("playback-panel").classList.contains("hidden")) {
-        updateTimeNavigationState();
-        return;
-    }
 
     // Query real prediction for this station
     queryLocation(station.coords[0], station.coords[1]);
@@ -980,7 +1001,7 @@ function setupEventListeners() {
     });
 
     // TIME NAVIGATION & WIND PARTICLES INITIALIZATION
-    initTimeNavigation();
+    setupEventListeners_playback();
     initWindParticles();
 
     // Toggle detailed prognosis matrix collapsible (GSAP powered)
@@ -1070,9 +1091,15 @@ function switchPanel(panelName) {
     // Toggle Playback bar visibility
     if (playbackPanel) {
         if (showPlayback) {
-            playbackPanel.classList.remove("hidden");
-            if (container) container.classList.add("playback-active");
-            gsap.fromTo(playbackPanel, { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.3 });
+            if (panelName === 'weather' && window.comingFromSatellite) {
+                playbackPanel.classList.add("hidden");
+                playbackPanel.style.opacity = 0;
+                if (container) container.classList.remove("playback-active");
+            } else {
+                playbackPanel.classList.remove("hidden");
+                if (container) container.classList.add("playback-active");
+                gsap.fromTo(playbackPanel, { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 0.3 });
+            }
         } else {
             playbackPanel.classList.add("hidden");
             if (container) container.classList.remove("playback-active");
@@ -1091,18 +1118,26 @@ function switchPanel(panelName) {
         if (mapContainerEl) mapContainerEl.classList.add("hidden");
         if (satGlobeContainerEl) {
             satGlobeContainerEl.classList.remove("hidden");
-            // Delay init/resize so the container is visible in DOM first
             setTimeout(() => {
                 initCesiumGlobe();
-                if (globeViewer) globeViewer.resize();
+                if (globeViewer) {
+                    const container = document.getElementById('cesiumContainer');
+                    if (container) {
+                        globeViewer.width(container.clientWidth).height(container.clientHeight);
+                    }
+                }
             }, 60);
         }
     } else if (panelName === 'analytics') {
         if (mapContainerEl) mapContainerEl.classList.add("hidden");
         if (satGlobeContainerEl) satGlobeContainerEl.classList.add("hidden");
+        hideSatelliteInfoPanel();
+        window.focusedSatelliteName = null;
     } else {
         if (satGlobeContainerEl) satGlobeContainerEl.classList.add("hidden");
         if (mapContainerEl) mapContainerEl.classList.remove("hidden");
+        hideSatelliteInfoPanel();
+        window.focusedSatelliteName = null;
     }
 
     if (panelName === 'dashboard') {
@@ -1133,14 +1168,26 @@ function switchPanel(panelName) {
             if (['satellite', 'analytics'].includes(panelName)) {
                 rightPanelContainer.classList.add("hidden");
             } else {
-                rightPanelContainer.classList.remove("hidden");
+                if (panelName === 'weather' && window.comingFromSatellite) {
+                    rightPanelContainer.classList.add("hidden");
+                    rightPanelContainer.style.opacity = 0;
+                } else {
+                    rightPanelContainer.classList.remove("hidden");
+                    rightPanelContainer.style.opacity = 1;
+                }
             }
         }
 
         // Toggle layers panel for map-centric overlays (except on satellite view which has its own Layer hud)
         if (layersPanel) {
             if (['weather', 'digital-twin', 'simulator'].includes(panelName)) {
-                layersPanel.classList.remove("hidden");
+                if (panelName === 'weather' && window.comingFromSatellite) {
+                    layersPanel.classList.add("hidden");
+                    layersPanel.style.opacity = 0;
+                } else {
+                    layersPanel.classList.remove("hidden");
+                    layersPanel.style.opacity = 1;
+                }
             } else {
                 layersPanel.classList.add("hidden");
             }
@@ -1149,7 +1196,13 @@ function switchPanel(panelName) {
         // Keep legend on weather/analytics (except on satellite view)
         if (mapLegend) {
             if (['weather', 'digital-twin', 'climate-intel'].includes(panelName)) {
-                mapLegend.classList.remove("hidden");
+                if (panelName === 'weather' && window.comingFromSatellite) {
+                    mapLegend.classList.add("hidden");
+                    mapLegend.style.opacity = 0;
+                } else {
+                    mapLegend.classList.remove("hidden");
+                    mapLegend.style.opacity = 1;
+                }
             } else {
                 mapLegend.classList.add("hidden");
             }
@@ -1171,6 +1224,7 @@ function switchPanel(panelName) {
                 // Populate initial cards
                 const activeStation = DISTRICT_STATIONS.find(s => s.name === AppState.selectedDistrict) || DISTRICT_STATIONS[0];
                 syncSatClimateCards(activeStation);
+                updateSatTimelineText();
             }
         } else {
             if (satWrap) {
@@ -1179,8 +1233,13 @@ function switchPanel(panelName) {
             }
             const activeWrap = document.getElementById(`panel-${panelName}`);
             if (activeWrap) {
-                activeWrap.classList.remove("hidden");
-                gsap.to(activeWrap, { opacity: 1, duration: 0.4, x: 0, ease: "power2.out" });
+                if (panelName === 'weather' && window.comingFromSatellite) {
+                    activeWrap.style.opacity = 0;
+                    activeWrap.classList.add("hidden");
+                } else {
+                    activeWrap.classList.remove("hidden");
+                    gsap.to(activeWrap, { opacity: 1, duration: 0.4, x: 0, ease: "power2.out" });
+                }
             }
         }
 
@@ -1315,7 +1374,6 @@ async function triggerSimulation() {
                 date: `${AppState.timeYear}-${String(AppState.timeMonth).padStart(2, '0')}-${String(AppState.timeDay).padStart(2, '0')}`
             })
         });
-    
         const data = await resp.json();
 
         // 1. UPDATE TAB 1: Climate State
@@ -1445,7 +1503,6 @@ async function triggerSimulation() {
         showNotification("Simulation Complete", "Twin calculations complete. Results synced to dashboard tabs.", "success");
 
     } catch (err) {
-        console.log(err);
         console.error('[R.O.O.K] Scientific simulate API failed:', err);
         showNotification("Simulation Failed", "Communication link to backend engines broken.", "error");
     } finally {
@@ -1745,15 +1802,6 @@ function updateMapLayers(simulated = false) {
             dir: d.wind_direction,
             lst: d.lst,
             sst: d.sst,
-            aiLoaded: true,
-            aiData: {
-                tmax_c: d.temperature,
-                rainfall_mm: d.rainfall,
-                wind_speed: d.wind_speed,
-                pressure: d.pressure,
-                humidity: d.humidity,
-                source: AppState.timeMode === 'forecast' ? 'xgboost_playback' : 'playback'
-            },
             drought_risk: d.drought_risk,
             flood_risk: d.flood_risk,
             heatwave_risk: d.heatwave_risk,
@@ -2157,17 +2205,12 @@ function applyAPITooltip(marker, data, station) {
 
 // Helper to keep code clean fr
 function applyAITooltip(marker, data, station) {
-    const temp = Number(data.tmax_c ?? data.temperature ?? station.temp ?? 0);
-    const rain = Number(data.rainfall_mm ?? data.rainfall ?? station.rain ?? 0);
-    const wind = Number(data.wind_speed ?? data.wind ?? station.wind ?? 0);
-    const humidity = Number(data.humidity ?? station.humidity ?? 0);
-    const pressure = Number(data.pressure ?? station.pressure ?? 0);
     marker.setTooltipContent(`
         <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
             <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name} <span style="color:#10b981;font-size:9px;">⚡ AI Sync</span></p>
-            <p style="margin:2px 0;color:#e2e8f0">Temp: ${temp.toFixed(1)}°C &nbsp; Rain: ${rain.toFixed(1)}mm</p>
-            <p style="margin:2px 0;color:#e2e8f0">Wind: ${wind.toFixed(1)} kmph ${station.dir} &nbsp; Hum: ${humidity.toFixed(0)}%</p>
-            <p style="margin:2px 0;color:#e2e8f0">Pressure: ${pressure.toFixed(1)} hPa</p>
+            <p style="margin:2px 0;color:#e2e8f0">Temp: ${data.tmax_c.toFixed(1)}°C &nbsp; Rain: ${data.rainfall_mm.toFixed(1)}mm</p>
+            <p style="margin:2px 0;color:#e2e8f0">Wind: ${data.wind_speed} kmph ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
+            <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
         </div>
     `);
 }
@@ -2235,6 +2278,11 @@ function initTimeNavigation() {
         updateTimeNavigationState();
     });
 
+    // Fetch today's playback data with the correct date
+    updateTimeNavigationState();
+}
+
+function setupEventListeners_playback() {
     const modeButtons = ["history", "live", "forecast", "scenario"];
     modeButtons.forEach(m => {
         const btn = document.getElementById(`mode-${m}`);
@@ -2371,6 +2419,9 @@ function initTimeNavigation() {
             AppState.playback.speed = parseInt(btn.getAttribute("data-speed"));
         });
     });
+
+    // Initialize calendar dropdowns with today's date, then fetch playback data for correct date
+    initTimeNavigation();
 }
 
 function updateTimeNavigationState() {
@@ -3569,393 +3620,1741 @@ function triggerScenarioPreset(scenario) {
     triggerSimulation();
 }
 
-// ─── Cesium 3D Space Globe Engine ─────────────────────────────────────────────
+// ─── Globe.gl 3D Space Globe Engine ─────────────────────────────────────────────
 
 let globeViewer = null;
-let globeDistrictsDataSource = null;
-let globeAutoRotateListener = null;
-let globeCycloneEntity = null;
 let satPlaybackInterval = null;
 let satPlaybackSpeed = 1;
+
+class CustomThreeGlobe {
+    constructor(container) {
+        this.container = container;
+        
+        // Scene setup
+        this._scene = new THREE.Scene();
+        
+        this._camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 15000);
+        this._camera.position.set(200, 350, 1100); // Wide panoramic: shows Sun at origin + Earth at orbit
+        
+        this._renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        this._renderer.setSize(container.clientWidth, container.clientHeight);
+        this._renderer.setPixelRatio(window.devicePixelRatio || 1);
+        this._renderer.shadowMap.enabled = false;
+        
+        // Clear container and append canvas
+        container.innerHTML = '';
+        container.appendChild(this._renderer.domElement);
+        
+        this._controls = new THREE.OrbitControls(this._camera, this._renderer.domElement);
+        this._controls.enableDamping = true;
+        this._controls.dampingFactor = 0.05;
+        this._controls.minDistance = 102;
+        this._controls.maxDistance = 2500;  // Allow zooming way out to see full solar system
+        this._controls.target.set(-190, 9, 0); // Start looking between Sun and Earth
+        
+        // Add default lights to the custom scene (to be traverse-configured in initCesiumGlobe)
+        const defaultAmbient = new THREE.AmbientLight(0xffffff, 0.2);
+        this._scene.add(defaultAmbient);
+        
+        const defaultDirectional = new THREE.DirectionalLight(0xffffff, 1.0);
+        defaultDirectional.position.set(380, 40, 0); // Sun's direction
+        this._scene.add(defaultDirectional);
+        
+        // Groups
+        this.earthGroup = new THREE.Group();
+        this._scene.add(this.earthGroup);
+        
+        this.boundaryGroup = new THREE.Group();
+        this.earthGroup.add(this.boundaryGroup);
+        
+        this.markerGroup = new THREE.Group();
+        this.earthGroup.add(this.markerGroup);
+        
+        this.satelliteGroup = new THREE.Group();
+        this._scene.add(this.satelliteGroup);
+        this._isAutoRotating = false;
+        
+        // Build Earth Mesh with CORS-enabled texture loader
+        const textureLoader = new THREE.TextureLoader();
+        textureLoader.setCrossOrigin('anonymous');
+        
+        // Create 1x1 transparent dummy canvas texture so materials compile shader programs with maps enabled
+        const createDummyTex = () => {
+            const canv = document.createElement('canvas');
+            canv.width = 1;
+            canv.height = 1;
+            return new THREE.CanvasTexture(canv);
+        };
+        const dummyTex = createDummyTex();
+        
+        const earthGeo = new THREE.SphereGeometry(100, 64, 64);
+        const earthMat = new THREE.ShaderMaterial({
+            uniforms: {
+                dayTexture: { value: dummyTex },
+                nightTexture: { value: dummyTex },
+                waterTexture: { value: dummyTex },
+                sunPosition: { value: new THREE.Vector3(380, 40, 0) }
+            },
+            vertexShader: `
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                varying vec3 vWorldPosition;
+                void main() {
+                    vUv = uv;
+                    vNormal = normalize(vec3(modelMatrix * vec4(normal, 0.0)));
+                    vWorldPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                }
+            `,
+            fragmentShader: `
+                uniform sampler2D dayTexture;
+                uniform sampler2D nightTexture;
+                uniform sampler2D waterTexture;
+                uniform vec3 sunPosition;
+                varying vec2 vUv;
+                varying vec3 vNormal;
+                varying vec3 vWorldPosition;
+                void main() {
+                    vec4 dayColor = texture2D(dayTexture, vUv);
+                    vec4 nightColor = texture2D(nightTexture, vUv);
+                    // Robust relative channel ocean detection on the day texture:
+                    // 1. Blue channel must be at least 0.05 greater than the Red channel
+                    // 2. Blue channel must be at least 0.02 greater than the Green channel
+                    float isOcean = step(dayColor.r + 0.05, dayColor.b) * step(dayColor.g + 0.02, dayColor.b);
+                    
+                    vec3 lightDir = normalize(sunPosition);
+                    vec3 normal = normalize(vNormal);
+                    
+                    float dotNL = dot(normal, lightDir);
+                    
+                    // Sharper transition for daylight highlight so the night side is dark and the day side is bright
+                    float dayIntensity = smoothstep(0.0, 0.45, dotNL);
+                    
+                    // 1. Base night color:
+                    // Keep the city lights (yellow/orange)
+                    vec3 lights = nightColor.rgb * 3.5;
+                    
+                    // Night side background:
+                    // Land gets a very subtle dark shade (4% of day texture)
+                    // Ocean gets a beautiful dark blueish/navy color (vec3(0.008, 0.015, 0.05))
+                    vec3 nightBase = mix(dayColor.rgb * 0.04, vec3(0.008, 0.015, 0.05), isOcean);
+                    vec3 nightColorDynamic = lights + nightBase;
+                    
+                    // 2. Day side highlight:
+                    // Keep the full day color (including the blue oceans and green landmasses)
+                    // with a bright, sunlit intensity of 1.1 so it "shines like sunlight falling out"
+                    vec3 dayHighlight = dayColor.rgb * 1.1 * dayIntensity;
+                    
+                    // Combine them
+                    vec3 finalColor = nightColorDynamic + dayHighlight;
+                    
+                    // Fade out city lights on the brightest day parts for realism
+                    finalColor = mix(finalColor, finalColor * 0.2 + dayHighlight, smoothstep(0.3, 0.7, dotNL));
+                    
+                    // Subtle atmosphere rim glow (warm white/light-orange, matching user's image)
+                    vec3 viewDir = normalize(cameraPosition - vWorldPosition);
+                    float rim = 1.0 - max(dot(viewDir, normal), 0.0);
+                    rim = pow(rim, 4.0);
+                    vec3 rimColor = vec3(1.0, 0.95, 0.85) * rim * 0.12;
+                    
+                    gl_FragColor = vec4(finalColor + rimColor, 1.0);
+                }
+            `
+        });
+        
+        // Load textures from GitHub jsDelivr mirrors asynchronously and swap dummy textures
+        textureLoader.load(
+            'https://cdn.jsdelivr.net/gh/vasturiano/three-globe/example/img/earth-blue-marble.jpg',
+            (tex) => {
+                tex.anisotropy = 4;
+                earthMat.uniforms.dayTexture.value = tex;
+                earthMat.needsUpdate = true;
+            }
+        );
+        textureLoader.load(
+            'https://cdn.jsdelivr.net/gh/vasturiano/three-globe/example/img/earth-night.jpg',
+            (tex) => {
+                tex.anisotropy = 4;
+                earthMat.uniforms.nightTexture.value = tex;
+                earthMat.needsUpdate = true;
+            }
+        );
+        textureLoader.load(
+            'https://cdn.jsdelivr.net/gh/vasturiano/three-globe/example/img/earth-water.png',
+            (tex) => {
+                tex.anisotropy = 4;
+                earthMat.uniforms.waterTexture.value = tex;
+                earthMat.needsUpdate = true;
+            }
+        );
+        
+        this.earthMesh = new THREE.Mesh(earthGeo, earthMat);
+        this.earthMesh.rotation.y = Math.PI / 2; // Align texture with math coordinates
+        this.earthGroup.add(this.earthMesh);
+        
+        // Atmosphere Glow (slightly larger shell)
+        const atmosGeo = new THREE.SphereGeometry(101.5, 64, 64);
+        const atmosMat = new THREE.MeshBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.06,
+            blending: THREE.AdditiveBlending,
+            side: THREE.BackSide
+        });
+        const atmosphere = new THREE.Mesh(atmosGeo, atmosMat);
+        this.earthGroup.add(atmosphere);
+
+        // Weather station markers (blue dots) removed per user request
+
+        // Raycasting for click/hover
+        this._raycaster = new THREE.Raycaster();
+        this._mouse = new THREE.Vector2();
+        
+        this.setupClickHandlers();
+        
+        // Animation Loop
+        const animate = () => {
+            requestAnimationFrame(animate);
+            
+            // Auto rotate earth
+            if (this._isAutoRotating && (!window.AppState || !AppState.playback.isPlaying)) {
+                this.earthGroup.rotation.y += 0.0015;
+            }
+            
+            this._controls.update();
+            
+            // Execute custom object updates (for satellites solar panels, etc.)
+            if (this._customThreeObjectUpdateFn && this._customLayerData) {
+                this._customLayerData.forEach(d => {
+                    if (d._threeObj) {
+                        this._customThreeObjectUpdateFn(d._threeObj, d);
+                    }
+                });
+            }
+            
+            this._renderer.render(this._scene, this._camera);
+        };
+        animate();
+    }
+    
+    scene() { return this._scene; }
+    camera() { return this._camera; }
+    renderer() { return this._renderer; }
+    controls() { return this._controls; }
+    
+    width(w) {
+        this._renderer.setSize(w, this._renderer.domElement.clientHeight);
+        this._camera.aspect = w / this._renderer.domElement.clientHeight;
+        this._camera.updateProjectionMatrix();
+        return this;
+    }
+    
+    height(h) {
+        this._renderer.setSize(this._renderer.domElement.clientWidth, h);
+        this._camera.aspect = this._renderer.domElement.clientWidth / h;
+        this._camera.updateProjectionMatrix();
+        return this;
+    }
+
+    pointOfView(pov, durationMs = 0, onCompleteFn = null) {
+        // Get Earth's current world position (may be at orbit offset from Sun)
+        const earthPos = this.earthGroup ? this.earthGroup.position.clone() : new THREE.Vector3(0,0,0);
+
+        if (!pov) {
+            // Return camera position relative to Earth
+            const relCam = this._camera.position.clone().sub(earthPos);
+            const camNorm = relCam.clone().normalize();
+            const lat = 90 - Math.acos(Math.max(-1, Math.min(1, camNorm.y))) * (180 / Math.PI);
+            const lng = Math.atan2(-camNorm.x, camNorm.z) * (180 / Math.PI);
+            const altitude = relCam.length() / 100 - 1;
+            return { lat: lat, lng: lng, altitude: altitude };
+        }
+        
+        // If focusing/zooming close (altitude < 3.0), stop auto-rotation and smoothly align Earth
+        if (durationMs > 0 && pov.altitude < 3.0) {
+            this.stopAutoRotate();
+            const currentRot = this.earthGroup.rotation.y;
+            const targetRot = Math.round(currentRot / (Math.PI * 2)) * (Math.PI * 2);
+            gsap.to(this.earthGroup.rotation, {
+                y: targetRot,
+                duration: durationMs / 1000,
+                ease: "power2.inOut"
+            });
+        }
+
+        // Compute camera target position offset by Earth's current world position
+        const localPos = getCartesianCoords(pov.lat, pov.lng, pov.altitude);
+        const targetPos = localPos.clone().add(earthPos);
+
+        if (durationMs <= 0) {
+            this._camera.position.copy(targetPos);
+            this._camera.lookAt(earthPos);
+            this._controls.target.copy(earthPos);
+            this._controls.update();
+            if (onCompleteFn) onCompleteFn();
+        } else {
+            gsap.to(this._camera.position, {
+                x: targetPos.x,
+                y: targetPos.y,
+                z: targetPos.z,
+                duration: durationMs / 1000,
+                ease: "power2.inOut",
+                onUpdate: () => {
+                    const ep = this.earthGroup ? this.earthGroup.position : new THREE.Vector3(0,0,0);
+                    this._camera.lookAt(ep);
+                    this._controls.target.lerp(ep, 0.05);
+                    this._controls.update();
+                },
+                onComplete: () => {
+                    if (onCompleteFn) onCompleteFn();
+                }
+            });
+        }
+        return this;
+    }
+
+    startAutoRotate() {
+        this._isAutoRotating = true;
+        return this;
+    }
+
+    stopAutoRotate() {
+        this._isAutoRotating = false;
+        return this;
+    }
+
+    getCoords(lat, lng, alt = 0) {
+        return getCartesianCoords(lat, lng, alt);
+    }
+    
+    // Boundary data mocks
+    polygonsData(data) {
+        if (!data) return this._polygonsData || [];
+        this._polygonsData = data;
+        this.renderBoundaries(data);
+        return this;
+    }
+    polygonStrokeColor() { return this; }
+    polygonCapColor() { return this; }
+    polygonAltitude() { return this; }
+    polygonLabel() { return this; }
+    onPolygonHover() { return this; }
+    onPolygonClick() { return this; }
+    pathsData(data) {
+        if (!data) return this._pathsData || [];
+        this._pathsData = data;
+        this.renderPaths(data);
+        return this;
+    }
+    pathPoints(fn) { this._pathPointsFn = fn; return this; }
+    pathColor(fn) { this._pathColorFn = fn; return this; }
+    pathStrokeWidth(fn) { this._pathStrokeWidthFn = fn; return this; }
+    pathDashLength(fn) { this._pathDashLengthFn = fn; return this; }
+    pathDashGap(fn) { this._pathDashGapFn = fn; return this; }
+
+    renderPaths(data) {
+        const THREE = window.THREE;
+        if (!THREE) return;
+        
+        if (!this.pathGroup) {
+            this.pathGroup = new THREE.Group();
+            this._scene.add(this.pathGroup);
+        } else {
+            while (this.pathGroup.children.length > 0) {
+                this.pathGroup.remove(this.pathGroup.children[0]);
+            }
+        }
+        
+        data.forEach(d => {
+            const points = [];
+            const coords = this._pathPointsFn ? this._pathPointsFn(d) : (d.coords || []);
+            const colorVal = this._pathColorFn ? this._pathColorFn(d) : 0xffffff;
+            const color = (typeof colorVal === 'string') ? parseInt(colorVal.replace('#', '0x')) : colorVal;
+            
+            coords.forEach(pt => {
+                const pos = getCartesianCoords(pt.lat, pt.lng, pt.alt);
+                points.push(pos);
+            });
+            
+            if (points.length < 2) return;
+            
+            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+            
+            const lineMat = new THREE.LineDashedMaterial({
+                color: color || 0x00e5ff,
+                dashSize: 3,
+                gapSize: 2,
+                transparent: true,
+                opacity: 0.35,
+                linewidth: 1.5
+            });
+            
+            const line = new THREE.Line(lineGeo, lineMat);
+            line.computeLineDistances();
+            this.pathGroup.add(line);
+        });
+    }
+
+    renderBoundaries(geojsonList) {
+        // Clear old boundaries
+        while (this.boundaryGroup.children.length > 0) {
+            this.boundaryGroup.remove(this.boundaryGroup.children[0]);
+        }
+        
+        geojsonList.forEach(feat => {
+            const geom = feat.geometry;
+            if (!geom) return;
+            
+            // Only keep India state boundaries; remove AP district boundaries
+            const isAP = feat.properties && feat.properties.isAP;
+            if (isAP) return;
+            
+            const lineMat = new THREE.LineBasicMaterial({
+                color: 0xffffff, // Pure white for India state borders
+                transparent: true,
+                opacity: 0.95
+            });
+            
+            const processPolygon = (coords) => {
+                const points = [];
+                coords.forEach(coord => {
+                    const pos = getCartesianCoords(coord[1], coord[0], 0.005);
+                    points.push(pos);
+                });
+                const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(lineGeo, lineMat);
+                this.boundaryGroup.add(line);
+            };
+            
+            if (geom.type === 'Polygon') {
+                geom.coordinates.forEach(processPolygon);
+            } else if (geom.type === 'MultiPolygon') {
+                geom.coordinates.forEach(poly => {
+                    poly.forEach(processPolygon);
+                });
+            }
+        });
+    }
+
+    customLayerData(data) {
+        if (!data) return this._customLayerData || [];
+        this._customLayerData = data;
+        
+        while (this.satelliteGroup.children.length > 0) {
+            this.satelliteGroup.remove(this.satelliteGroup.children[0]);
+        }
+        
+        data.forEach(d => {
+            if (this._customThreeObjectFn) {
+                const obj = this._customThreeObjectFn(d);
+                if (obj) {
+                    this.satelliteGroup.add(obj);
+                }
+            }
+        });
+        return this;
+    }
+    
+    customThreeObject(fn) {
+        this._customThreeObjectFn = fn;
+        return this;
+    }
+    
+    customThreeObjectUpdate(fn) {
+        this._customThreeObjectUpdateFn = fn;
+        return this;
+    }
+
+    onCustomLayerObjectClick(fn) {
+        this._onCustomLayerObjectClickCallback = fn;
+        return this;
+    }
+
+    onGlobeClick(fn) {
+        this._onGlobeClickFn = fn;
+        return this;
+    }
+
+    setupClickHandlers() {
+        const onCanvasClick = (event) => {
+            const rect = this._renderer.domElement.getBoundingClientRect();
+            this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            this._raycaster.setFromCamera(this._mouse, this._camera);
+            
+            // 1. Raycast against satellites first
+            const satIntersects = this._raycaster.intersectObjects(this.satelliteGroup.children, true);
+            if (satIntersects.length > 0) {
+                let obj = satIntersects[0].object;
+                while (obj && !obj.userData.leftPanel && obj.parent) {
+                    obj = obj.parent;
+                }
+                if (obj && this._onCustomLayerObjectClickCallback) {
+                    this._onCustomLayerObjectClickCallback(obj, event);
+                    return;
+                }
+            }
+
+            // 2. Raycast against weather station markers
+            const markerIntersects = this._raycaster.intersectObjects(this.markerGroup.children, true);
+            if (markerIntersects.length > 0) {
+                let obj = markerIntersects[0].object;
+                while (obj && !obj.userData.name && obj.parent) {
+                    obj = obj.parent;
+                }
+                if (obj && obj.userData.name) {
+                    handleDistrictClick(obj.userData.name);
+                    return;
+                }
+            }
+
+            // 3. Raycast against Earth globe to fly to India
+            const earthIntersects = this._raycaster.intersectObject(this.earthMesh);
+            if (earthIntersects.length > 0 && this._onGlobeClickFn) {
+                this._onGlobeClickFn();
+            }
+        };
+        
+        // Setup Hover Tooltip for Districts
+        const tooltipDiv = document.createElement('div');
+        tooltipDiv.style.position = 'absolute';
+        tooltipDiv.style.pointerEvents = 'none';
+        tooltipDiv.style.background = 'rgba(10, 25, 47, 0.95)';
+        tooltipDiv.style.border = '1px solid #00E5FF';
+        tooltipDiv.style.borderRadius = '6px';
+        tooltipDiv.style.padding = '6px 10px';
+        tooltipDiv.style.color = '#fff';
+        tooltipDiv.style.fontSize = '11px';
+        tooltipDiv.style.fontFamily = 'Inter, sans-serif';
+        tooltipDiv.style.boxShadow = '0 4px 10px rgba(0,0,0,0.5)';
+        tooltipDiv.style.display = 'none';
+        tooltipDiv.style.zIndex = '9999';
+        document.body.appendChild(tooltipDiv);
+
+        const onCanvasMouseMove = (event) => {
+            const rect = this._renderer.domElement.getBoundingClientRect();
+            this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+            
+            this._raycaster.setFromCamera(this._mouse, this._camera);
+            const intersects = this._raycaster.intersectObject(this.earthMesh);
+            if (intersects.length > 0) {
+                const hitPoint = intersects[0].point;
+                const { lat, lng } = cartesianToLatLng(hitPoint);
+                
+                const closest = getClosestStation(lat, lng);
+                if (!closest) { tooltipDiv.style.display = 'none'; return; }
+                const distanceThreshold = 4.0; // degrees squared
+                const d = Math.pow(closest.coords[0] - lat, 2) + Math.pow(closest.coords[1] - lng, 2);
+                
+                if (d < distanceThreshold) {
+                    tooltipDiv.style.display = 'block';
+                    tooltipDiv.style.left = (event.clientX + 15) + 'px';
+                    tooltipDiv.style.top = (event.clientY + 15) + 'px';
+                    tooltipDiv.innerHTML = `<b>${closest.name}</b>`;
+                    return;
+                }
+            }
+            tooltipDiv.style.display = 'none';
+        };
+        
+        this._renderer.domElement.addEventListener('click', onCanvasClick);
+        this._renderer.domElement.addEventListener('mousemove', onCanvasMouseMove);
+    }
+}
+
+function getCartesianCoords(lat, lng, alt = 0, radius = 100) {
+    const r = radius * (1 + alt);
+    const phi = (90 - lat) * (Math.PI / 180);
+    const theta = (lng + 180) * (Math.PI / 180);
+    return new THREE.Vector3(
+        r * Math.sin(phi) * Math.sin(theta),
+        r * Math.cos(phi),
+        r * Math.sin(phi) * Math.cos(theta)
+    );
+}
+
+function cartesianToLatLng(pos, radius = 100) {
+    // Account for Earth's current world offset (Earth orbits Sun, so earthGroup is not at origin)
+    const earthOffset = (globeViewer && globeViewer.earthGroup) ? globeViewer.earthGroup.position : new THREE.Vector3(0,0,0);
+    const localPos = new THREE.Vector3(pos.x - earthOffset.x, pos.y - earthOffset.y, pos.z - earthOffset.z);
+    // Also account for Earth's rotation around its own Y axis
+    const earthRot = (globeViewer && globeViewer.earthGroup) ? globeViewer.earthGroup.rotation.y : 0;
+    const cosR = Math.cos(-earthRot), sinR = Math.sin(-earthRot);
+    const rx = localPos.x * cosR + localPos.z * sinR;
+    const rz = -localPos.x * sinR + localPos.z * cosR;
+    const localRotated = new THREE.Vector3(rx, localPos.y, rz);
+    const lat = 90 - Math.acos(Math.max(-1, Math.min(1, localRotated.y / radius))) * (180 / Math.PI);
+    const lng = Math.atan2(-localRotated.x, -localRotated.z) * (180 / Math.PI);
+    return { lat: lat, lng: lng };
+}
+
+function getClosestStation(lat, lng) {
+    let closest = null;
+    let minDistance = Infinity;
+    DISTRICT_STATIONS.forEach(s => {
+        const d = Math.pow(s.coords[0] - lat, 2) + Math.pow(s.coords[1] - lng, 2);
+        if (d < minDistance) {
+            minDistance = d;
+            closest = s;
+        }
+    });
+    return closest;
+}
 
 function initCesiumGlobe() {
     if (AppState.isCesiumInitialized) return;
 
-    // Clear Ion token - avoids login popups
-    Cesium.Ion.defaultAccessToken = '';
+    // Inject CSS keyframes for satellite pulses, cyclone spin, and outline glow animations
+    if (!document.getElementById('globe-gl-styles')) {
+        const style = document.createElement('style');
+        style.id = 'globe-gl-styles';
+        style.innerHTML = `
+            @keyframes satellite-pulse {
+                0% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0.45); }
+                70% { box-shadow: 0 0 0 8px rgba(0, 229, 255, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(0, 229, 255, 0); }
+            }
+            @keyframes cyclone-spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+        `;
+        document.head.appendChild(style);
+    }
 
-    // ── Viewer ──────────────────────────────────────────────────────────────────
-    globeViewer = new Cesium.Viewer('cesiumContainer', {
-        geocoder:             false,
-        homeButton:           false,
-        sceneModePicker:      false,
-        baseLayerPicker:      false,
-        navigationHelpButton: false,
-        animation:            false,
-        timeline:             false,
-        fullscreenButton:     false,
-        vrButton:             false,
-        imageryProvider: new Cesium.UrlTemplateImageryProvider({
-            url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-            maximumLevel: 19
-        })
-        // NOTE: skyBox is left as DEFAULT so Cesium renders the real Milky Way star field
-    });
+    const container = document.getElementById('cesiumContainer');
+    
+    // Initialize Custom Three.js Globe instead of Globe.gl
+    globeViewer = new CustomThreeGlobe(container);
 
-    // Hide credit bar
-    if (globeViewer.bottomContainer) globeViewer.bottomContainer.style.display = 'none';
+    const controls = globeViewer.controls();
 
-    // ── Scene settings ───────────────────────────────────────────────────────────
-    const scene = globeViewer.scene;
-    scene.globe.showGroundAtmosphere = true;
-    scene.globe.enableLighting       = true;
-    scene.light                      = new Cesium.SunLight();
-    scene.fog.enabled                = true;
-    scene.skyAtmosphere.show         = true;
+    // Initial wide-angle view showing Sun at center and Earth in orbit
+    // Camera is at (200, 350, 1100), controls target between Sun and Earth
+    globeViewer.controls().update();
+    startGlobeAutoRotate();
 
-    // ── Camera: start above India ────────────────────────────────────────────────
-    flyToIndia(false);
+    // Fetch and draw GeoJSON polygons (India + AP)
+    setupGlobePolygons();
 
-    // ── GeoJSON district boundaries ──────────────────────────────────────────────
-    Cesium.GeoJsonDataSource.load('/static/geojson/ap-districts.json', {
-        stroke:      Cesium.Color.fromCssColorString('#00E5FF').withAlpha(0.90),
-        strokeWidth: 3,
-        fill:        Cesium.Color.fromCssColorString('#00B8D9').withAlpha(0.18)
-    }).then(function(ds) {
-        globeDistrictsDataSource = ds;
-        globeViewer.dataSources.add(ds);
-        setupGlobeInteraction();
-        colorGlobeDistricts();
-    });
-
-    // ── Satellites ───────────────────────────────────────────────────────────────
+    // Draw satellite orbits and nodes
     setupOrbitingSatellites();
 
-    // ── Cyclone ──────────────────────────────────────────────────────────────────
-    setupGlobeCyclone();
-
-    // ── HUD Controls ─────────────────────────────────────────────────────────────
+    // Bind HUD controls
     setupGlobeControls();
 
+    // Add Custom 3D Space Elements (Sun, Moon, Starfield, Dynamic Shading, Orbits)
+    const THREE = window.THREE;
+    if (THREE) {
+        // Configure existing default lights to prevent version/prototype mismatches (recursive search)
+        let ambLight = null;
+        let dirLight = null;
+        globeViewer.scene().traverse(child => {
+            if (child.type === 'AmbientLight') ambLight = child;
+            if (child.type === 'DirectionalLight') dirLight = child;
+        });
+
+        if (ambLight) {
+            ambLight.color.setHex(0x0a0c16);
+            ambLight.intensity = 1.2; // subtle dark blue night ambient
+        }
+
+        if (dirLight) {
+            dirLight.intensity = 4.0; // bright Sun light
+        }
+
+        // ── SUN AT SCENE CENTER (0,0,0) ──────────────────────────────────────────
+        sunSprite = createSunSprite();
+        if (sunSprite) {
+            sunSprite.position.set(0, 0, 0); // Sun is FIXED at origin
+            globeViewer.scene().add(sunSprite);
+        }
+
+        // Bright point light at Sun center
+        const sunPointLight = new THREE.PointLight(0xfff5d0, 4.0, 1200);
+        sunPointLight.position.set(0, 0, 0);
+        globeViewer.scene().add(sunPointLight);
+        window._sunPointLight = sunPointLight;
+
+        // Earth's orbit ring around Sun (radius 380, in X-Z plane) — more visible
+        const earthOrbitGeo = new THREE.RingGeometry(378, 382, 180);
+        const earthOrbitMat = new THREE.MeshBasicMaterial({
+            color: 0x44aaff,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.28,
+            blending: THREE.AdditiveBlending
+        });
+        const earthOrbitRing = new THREE.Mesh(earthOrbitGeo, earthOrbitMat);
+        earthOrbitRing.rotation.x = Math.PI / 2;
+        globeViewer.scene().add(earthOrbitRing);
+
+        // Add a second glow pass for the Earth orbit path
+        const earthOrbitGlowGeo = new THREE.RingGeometry(374, 386, 180);
+        const earthOrbitGlowMat = new THREE.MeshBasicMaterial({
+            color: 0x2266aa,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.08,
+            blending: THREE.AdditiveBlending
+        });
+        const earthOrbitGlowRing = new THREE.Mesh(earthOrbitGlowGeo, earthOrbitGlowMat);
+        earthOrbitGlowRing.rotation.x = Math.PI / 2;
+        globeViewer.scene().add(earthOrbitGlowRing);
+
+        // Add Moon
+        moonMesh = createMoonMesh();
+        if (moonMesh) globeViewer.scene().add(moonMesh);
+
+        // Add Starfield Point Cloud
+        starfieldPoints = createStarfield();
+        if (starfieldPoints) globeViewer.scene().add(starfieldPoints);
+
+        // ── 3 REALISTIC SCENE-SPACE SATELLITES WITH ORBIT RINGS & BEAMS ─────────
+        const satDefs = [
+            { label: 'INSAT-3DR',     color: '#2196F3', colorHex: 0x2196F3, radius: 125, speed: 0.8,  incline: 0.08, phase: 0 },
+            { label: 'Oceansat-3',    color: '#00C853', colorHex: 0x00C853, radius: 140, speed: 1.4,  incline: 1.57, phase: Math.PI * 0.66 },
+            { label: 'Resourcesat-2A',color: '#FF6D00', colorHex: 0xFF6D00, radius: 133, speed: 1.1,  incline: 0.95, phase: Math.PI * 1.3 }
+        ];
+        sceneSatellites = satDefs.map(def => {
+            const group = createSmallSatelliteMesh(def.label, def.color);
+            globeViewer.satelliteGroup.add(group); // Add to satelliteGroup for raycast clicks!
+            group.userData.label = def.label;
+
+            // ── Orbit Ring for this satellite ──────────────────────────────────
+            // Inner ring (crisp)
+            const orbitGeo = new THREE.RingGeometry(def.radius - 0.7, def.radius + 0.7, 128);
+            const orbitMat = new THREE.MeshBasicMaterial({
+                color: def.colorHex,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.55,
+                blending: THREE.AdditiveBlending
+            });
+            const orbitRing = new THREE.Mesh(orbitGeo, orbitMat);
+            globeViewer.scene().add(orbitRing);
+
+            // Outer glow ring (wider, softer)
+            const glowGeo = new THREE.RingGeometry(def.radius - 3.5, def.radius + 3.5, 128);
+            const glowMat = new THREE.MeshBasicMaterial({
+                color: def.colorHex,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.12,
+                blending: THREE.AdditiveBlending
+            });
+            const glowRing = new THREE.Mesh(glowGeo, glowMat);
+            globeViewer.scene().add(glowRing);
+
+            // ── Beam Line for this satellite ──────────────────────────────────
+            const beamGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(0,0,0),
+                new THREE.Vector3(0,0,0)
+            ]);
+            const beamMat = new THREE.LineBasicMaterial({
+                color: def.colorHex,
+                transparent: true,
+                opacity: 0.45,
+                blending: THREE.AdditiveBlending
+            });
+            const beamLine = new THREE.Line(beamGeo, beamMat);
+            globeViewer.scene().add(beamLine);
+
+            return { ...def, mesh: group, orbitRing, glowRing, beamLine };
+        });
+
+        // Start requestAnimationFrame loop
+        startSpaceSceneAnimation();
+    }
+
+    // Set up auto-rotation resume after user interaction (5-6 seconds)
+    let autoRotateTimeout = null;
+    let isUserInteracting = false;
+
+    controls.addEventListener('start', () => {
+        isUserInteracting = true;
+        stopGlobeAutoRotate();
+        if (autoRotateTimeout) clearTimeout(autoRotateTimeout);
+    });
+
+    controls.addEventListener('end', () => {
+        isUserInteracting = false;
+        if (autoRotateTimeout) clearTimeout(autoRotateTimeout);
+        
+        // Only resume auto-rotation if camera is in Space View (altitude > 2.0)
+        const pov = globeViewer.pointOfView();
+        if (pov.altitude > 2.0) {
+            autoRotateTimeout = setTimeout(() => {
+                if (!isUserInteracting) {
+                    startGlobeAutoRotate();
+                }
+            }, 5500); // Resume auto-rotation after 5.5 seconds of inactivity
+        }
+    });
+
+    // Focus on Earth/India or redirect to Live Weather when clicking on the globe
+    globeViewer.onGlobeClick((lat, lng) => {
+        stopGlobeAutoRotate();
+        if (autoRotateTimeout) clearTimeout(autoRotateTimeout);
+        
+        // Reset any satellite tracking on globe/earth click
+        window.focusedSatelliteName = null;
+
+        // Check current camera zoom/altitude relative to Earth
+        const pov = globeViewer.pointOfView();
+        
+        if (pov.altitude < 1.8) {
+            // Already zoomed in -> Zoom closer to India and then Redirect to Live Weather section with animations
+            hideSatelliteInfoPanel();
+            window.comingFromSatellite = true;
+            
+            // Zoom closer to Andhra Pradesh/India first (altitude 0.35)
+            flyToLatLngWorld(15.9129, 79.7400, 0.35, 1200);
+            
+            // Fade out the 3D elements
+            gsap.to(["#satellite-globe-container", "#panel-satellite"], {
+                opacity: 0,
+                duration: 0.5,
+                delay: 0.7,
+                onComplete: () => {
+                    document.getElementById("satellite-globe-container").classList.add("hidden");
+                    document.getElementById("panel-satellite").classList.add("hidden");
+                    
+                    // Switch to live weather panel
+                    switchPanel('weather');
+                    window.history.pushState({}, '', '/weather/');
+                    
+                    // Restore original opacity properties for next satellite session
+                    document.getElementById("satellite-globe-container").style.opacity = 1;
+                    document.getElementById("panel-satellite").style.opacity = 1;
+                    
+                    // Run Leaflet zoom in from 5 to 7.5
+                    if (AppState.map) {
+                        AppState.map.setView(AP_CENTER, 5, { animate: false });
+                        setTimeout(() => {
+                            AppState.map.flyTo(AP_CENTER, AP_ZOOM, { duration: 1.5 });
+                        }, 100);
+                    }
+                    
+                    // Fade in all the Live Weather options panel and overlay panels after 2 seconds
+                    setTimeout(() => {
+                        const weatherWrap = document.getElementById("panel-weather");
+                        const rightPanelContainer = document.getElementById("right-side-panel-container");
+                        const layersPanel = document.getElementById("map-layers-panel");
+                        const mapLegend = document.getElementById("map-legend");
+                        const playbackPanel = document.getElementById("playback-panel");
+                        const container = document.getElementById("app-container");
+
+                        if (weatherWrap) {
+                            weatherWrap.classList.remove("hidden");
+                            gsap.fromTo(weatherWrap, { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 1.0, ease: "power2.out" });
+                        }
+                        if (rightPanelContainer) {
+                            rightPanelContainer.classList.remove("hidden");
+                            gsap.fromTo(rightPanelContainer, { opacity: 0, x: 30 }, { opacity: 1, x: 0, duration: 1.0, ease: "power2.out" });
+                        }
+                        if (layersPanel) {
+                            layersPanel.classList.remove("hidden");
+                            gsap.fromTo(layersPanel, { opacity: 0, y: -20 }, { opacity: 1, y: 0, duration: 1.0, ease: "power2.out" });
+                        }
+                        if (mapLegend) {
+                            mapLegend.classList.remove("hidden");
+                            gsap.fromTo(mapLegend, { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 1.0, ease: "power2.out" });
+                        }
+                        if (playbackPanel) {
+                            playbackPanel.classList.remove("hidden");
+                            if (container) container.classList.add("playback-active");
+                            gsap.fromTo(playbackPanel, { opacity: 0, y: 15 }, { opacity: 1, y: 0, duration: 1.0, ease: "power2.out" });
+                        }
+
+                        window.comingFromSatellite = false;
+                    }, 2000);
+                }
+            });
+            return;
+        }
+
+        // Otherwise focus India
+        flyToIndia(true);
+    });
+
+    // Satellite click -> focus and track satellite
+    globeViewer.onCustomLayerObjectClick((obj) => {
+        const name = obj.userData.label;
+        if (name) {
+            window.focusSatelliteByName(name);
+        }
+    });
+
     AppState.isCesiumInitialized = true;
-    console.log('[R.O.O.K] Cesium 3D Space Globe Initialised ✓');
+    console.log('[R.O.O.K] Custom Three.js 3D Space Globe Initialised ✓');
+}
+
+function flyToEarth(animate = true) {
+    if (!globeViewer) return;
+    window.focusedSatelliteName = null;
+    globeViewer.pointOfView({ lat: 0, lng: 0, altitude: 2.8 }, animate ? 2000 : 0);
+}
+
+function flyToLatLngWorld(lat, lng, altitude, duration = 2000) {
+    if (!globeViewer || !globeViewer.earthGroup) return;
+    const camera = globeViewer.camera();
+    const controls = globeViewer.controls();
+    if (!camera || !controls) return;
+
+    const localCoords = globeViewer.getCoords(lat, lng);
+    if (!localCoords) return;
+
+    const THREE = window.THREE;
+    const localVec = new THREE.Vector3(localCoords.x, localCoords.y, localCoords.z)
+        .normalize()
+        .multiplyScalar(100 * (1 + altitude));
+
+    const targetCamPos = globeViewer.earthGroup.localToWorld(localVec);
+    const targetCenter = globeViewer.earthGroup.position.clone();
+
+    if (window.gsap && duration > 0) {
+        gsap.to(camera.position, {
+            x: targetCamPos.x,
+            y: targetCamPos.y,
+            z: targetCamPos.z,
+            duration: duration / 1000,
+            ease: 'power2.inOut'
+        });
+        gsap.to(controls.target, {
+            x: targetCenter.x,
+            y: targetCenter.y,
+            z: targetCenter.z,
+            duration: duration / 1000,
+            ease: 'power2.inOut',
+            onUpdate: () => {
+                controls.update();
+            }
+        });
+    } else {
+        camera.position.copy(targetCamPos);
+        controls.target.copy(targetCenter);
+        controls.update();
+    }
 }
 
 function flyToIndia(animate = true) {
     if (!globeViewer) return;
-    // 3 500 km – shows all of India + Indian Ocean, a real "from space" perspective
-    const dest = Cesium.Cartesian3.fromDegrees(79.74, 20.00, 3500000);
-    const orient = {
-        heading: Cesium.Math.toRadians(0),
-        pitch:   Cesium.Math.toRadians(-55),   // slight tilt so the horizon & space are visible
-        roll:    0
+    window.focusedSatelliteName = null;
+    stopGlobeAutoRotate();
+    flyToLatLngWorld(20.5937, 78.9629, 1.2, animate ? 2000 : 0);
+}
+
+function flyToAP(animate = true) {
+    if (!globeViewer) return;
+    window.focusedSatelliteName = null;
+    stopGlobeAutoRotate();
+    flyToLatLngWorld(15.9129, 79.7400, 0.65, animate ? 2000 : 0);
+}
+
+// ── SPACE SCENE & SATELLITE SIMULATION UTILITIES ──────────────────────────────────
+let spaceAnimationId = null;
+let spaceTick = 0;
+let lastLogTime = 0;
+let logIndex = 0;
+let earthOrbitAngle = Math.PI;  // Earth starts at (-380, 18, 0) — to the left of Sun in initial view
+let moonAngle = Math.PI / 4;
+let sunSprite = null;
+let sunLight = null;
+let moonMesh = null;
+let starfieldPoints = null;
+let sceneSatellites = [];   // Three.js satellite meshes orbiting Earth in scene space
+
+function createSatelliteThreeObject(labelText, colorHexStr) {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+
+    const colorHex = parseInt(colorHexStr.replace('#', '0x')) || 0x00e5ff;
+    const group = new THREE.Group();
+
+    // 1. Central bus (chassis) - Gold Foil Material
+    const busGeo = new THREE.BoxGeometry(2.2, 2.2, 3.2);
+    const busMat = new THREE.MeshStandardMaterial({
+        color: 0xffd700, // Gold
+        metalness: 0.9,
+        roughness: 0.2
+    });
+    const bus = new THREE.Mesh(busGeo, busMat);
+    group.add(bus);
+
+    // 2. Solar panel yoke/bracket (horizontal axle)
+    const yokeGeo = new THREE.CylinderGeometry(0.2, 0.2, 10, 8);
+    const yokeMat = new THREE.MeshStandardMaterial({
+        color: 0x999999,
+        metalness: 0.8,
+        roughness: 0.2
+    });
+    const yoke = new THREE.Mesh(yokeGeo, yokeMat);
+    yoke.rotation.z = Math.PI / 2; // Lie horizontally across X-axis
+    group.add(yoke);
+
+    // 3. Solar Panels (Wings on left and right)
+    const panelGeo = new THREE.BoxGeometry(4.5, 0.1, 2.0);
+    const panelMat = new THREE.MeshStandardMaterial({
+        color: 0x0f2027, // Dark blue-black solar cell color
+        metalness: 0.8,
+        roughness: 0.1,
+        emissive: 0x05101a
+    });
+    
+    // Grid frames for panels
+    const frameGeo = new THREE.BoxGeometry(4.7, 0.12, 2.2);
+    const frameMat = new THREE.MeshStandardMaterial({
+        color: 0x222222, // dark frame
+        metalness: 0.8,
+        roughness: 0.3
+    });
+
+    const leftPanel = new THREE.Mesh(panelGeo, panelMat);
+    leftPanel.position.set(-6, 0, 0);
+    const leftFrame = new THREE.Mesh(frameGeo, frameMat);
+    leftFrame.position.set(-6, 0, 0);
+
+    const rightPanel = new THREE.Mesh(panelGeo, panelMat);
+    rightPanel.position.set(6, 0, 0);
+    const rightFrame = new THREE.Mesh(frameGeo, frameMat);
+    rightFrame.position.set(6, 0, 0);
+
+    group.add(leftPanel);
+    group.add(leftFrame);
+    group.add(rightPanel);
+    group.add(rightFrame);
+
+    // 4. Parabolic Antenna Dish (pointing towards Earth, +Z)
+    const dishGeo = new THREE.ConeGeometry(1.2, 0.6, 16, 1, true); // open cone
+    const dishMat = new THREE.MeshStandardMaterial({
+        color: 0xdddddd, // Silver-white
+        metalness: 0.6,
+        roughness: 0.4,
+        side: THREE.DoubleSide
+    });
+    const dish = new THREE.Mesh(dishGeo, dishMat);
+    dish.position.set(0, 0, 2.0); // Facing forward towards Earth (+Z)
+    dish.rotation.x = Math.PI / 2; // Rotate to point along Z axis
+    group.add(dish);
+
+    // Antenna feed horn
+    const hornGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.0, 8);
+    const hornMat = new THREE.MeshStandardMaterial({
+        color: 0x333333,
+        metalness: 0.9
+    });
+    const horn = new THREE.Mesh(hornGeo, hornMat);
+    horn.position.set(0, 0, 2.5);
+    horn.rotation.x = Math.PI / 2;
+    group.add(horn);
+
+    // 5. Thruster nozzles at the back (-Z)
+    const thrusterGeo = new THREE.CylinderGeometry(0.18, 0.28, 0.5, 8);
+    const thrusterMat = new THREE.MeshStandardMaterial({
+        color: 0x111111,
+        metalness: 0.9,
+        roughness: 0.4
+    });
+    const thruster1 = new THREE.Mesh(thrusterGeo, thrusterMat);
+    thruster1.position.set(0.6, 0, -1.8);
+    thruster1.rotation.x = Math.PI / 2;
+    group.add(thruster1);
+
+    const thruster2 = thruster1.clone();
+    thruster2.position.set(-0.6, 0, -1.8);
+    group.add(thruster2);
+
+    // 6. Pulsing signal beam - Removed to prevent scanning rays covering India
+
+    // 7. Blinking communication light on top of the chassis
+    const lightGeo = new THREE.SphereGeometry(0.2, 8, 8);
+    const lightMat = new THREE.MeshBasicMaterial({
+        color: colorHex,
+        transparent: true,
+        opacity: 1.0
+    });
+    const blinkingLight = new THREE.Mesh(lightGeo, lightMat);
+    blinkingLight.position.set(0, 1.3, 0); // on top of the body
+    group.add(blinkingLight);
+
+    // 8. 3D Floating Label Sprite
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 256;
+    labelCanvas.height = 64;
+    const labelCtx = labelCanvas.getContext('2d');
+    
+    // Transparent background pill
+    labelCtx.fillStyle = 'rgba(8, 18, 36, 0.85)';
+    labelCtx.strokeStyle = colorHexStr;
+    labelCtx.lineWidth = 2.5;
+    
+    // Draw rounded rect
+    const lx = 4, ly = 4, lw = 248, lh = 56, lr = 12;
+    labelCtx.beginPath();
+    labelCtx.moveTo(lx + lr, ly);
+    labelCtx.arcTo(lx + lw, ly, lx + lw, ly + lh, lr);
+    labelCtx.arcTo(lx + lw, ly + lh, lx, ly + lh, lr);
+    labelCtx.arcTo(lx, ly + lh, lx, ly, lr);
+    labelCtx.arcTo(lx, ly, lx + lw, ly, lr);
+    labelCtx.closePath();
+    labelCtx.fill();
+    labelCtx.stroke();
+    
+    // Text
+    labelCtx.font = 'bold 20px Inter, sans-serif';
+    labelCtx.fillStyle = '#ffffff';
+    labelCtx.textAlign = 'center';
+    labelCtx.textBaseline = 'middle';
+    labelCtx.fillText(labelText || 'SATELLITE', 128, 32);
+    
+    const labelTexture = new THREE.CanvasTexture(labelCanvas);
+    const labelSpriteMat = new THREE.SpriteMaterial({ map: labelTexture, transparent: true });
+    const labelSprite = new THREE.Sprite(labelSpriteMat);
+    labelSprite.scale.set(24.0, 6.0, 1.0); // Made 3.2x larger for high readability
+    labelSprite.position.set(0, 8.5, 0); // Float higher above the body structure
+    group.add(labelSprite);
+
+    group.userData = {
+        leftPanel: leftPanel,
+        rightPanel: rightPanel,
+        leftFrame: leftFrame,
+        rightFrame: rightFrame,
+        blinkingLight: blinkingLight,
+        pulseSpeed: 3 + Math.random() * 2
     };
-    if (animate) {
-        globeViewer.camera.flyTo({ destination: dest, orientation: orient, duration: 2.4 });
-    } else {
-        globeViewer.camera.setView({ destination: dest, orientation: orient });
-    }
+
+    return group;
 }
 
-// ── Draw one realistic spacecraft on a canvas and return it as a data-URL ────────
-function drawSatelliteCanvas(accentColor) {
-    const size = 128;
-    const c    = document.createElement('canvas');
-    c.width  = size;
-    c.height = size;
-    const ctx = c.getContext('2d');
-
-    const cx = size / 2;
-    const cy = size / 2;
-
-    // ── Solar panels (left wing) ──────────────────────────────────────────────────
-    const panelGrad = ctx.createLinearGradient(2, cy - 10, 44, cy + 10);
-    panelGrad.addColorStop(0,   '#1a237e');
-    panelGrad.addColorStop(0.4, '#283593');
-    panelGrad.addColorStop(1,   '#1565c0');
-    ctx.fillStyle = panelGrad;
-    ctx.fillRect(2, cy - 10, 42, 20);
-
-    // grid lines on left panel
-    ctx.strokeStyle = accentColor;
-    ctx.lineWidth   = 0.6;
-    for (let x = 2; x <= 44; x += 10) { ctx.beginPath(); ctx.moveTo(x, cy-10); ctx.lineTo(x, cy+10); ctx.stroke(); }
-    for (let y = cy-10; y <= cy+10; y += 10) { ctx.beginPath(); ctx.moveTo(2, y); ctx.lineTo(44, y); ctx.stroke(); }
-
-    // ── Solar panels (right wing) ─────────────────────────────────────────────────
-    const panelGradR = ctx.createLinearGradient(size - 44, cy - 10, size - 2, cy + 10);
-    panelGradR.addColorStop(0, '#1565c0'); panelGradR.addColorStop(0.6, '#283593'); panelGradR.addColorStop(1, '#1a237e');
-    ctx.fillStyle = panelGradR;
-    ctx.fillRect(size - 44, cy - 10, 42, 20);
-
-    // grid lines on right panel
-    for (let x = size - 44; x <= size - 2; x += 10) { ctx.beginPath(); ctx.moveTo(x, cy-10); ctx.lineTo(x, cy+10); ctx.stroke(); }
-    for (let y = cy-10; y <= cy+10; y += 10)         { ctx.beginPath(); ctx.moveTo(size-44, y); ctx.lineTo(size-2, y); ctx.stroke(); }
-
-    // ── Central bus / chassis ─────────────────────────────────────────────────────
-    const bodyGrad = ctx.createLinearGradient(cx - 16, cy - 18, cx + 16, cy + 18);
-    bodyGrad.addColorStop(0,   '#bfa040');
-    bodyGrad.addColorStop(0.3, '#d4a829');
-    bodyGrad.addColorStop(0.7, '#c8961e');
-    bodyGrad.addColorStop(1,   '#9e7a10');
-    ctx.fillStyle   = bodyGrad;
-    ctx.shadowColor = '#FFD700';
-    ctx.shadowBlur  = 6;
-    ctx.fillRect(cx - 16, cy - 18, 32, 36);
-    ctx.shadowBlur  = 0;
-
-    // Bus thermal stripe
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.fillRect(cx - 16, cy - 4, 32, 8);
-
-    // Bus outline
-    ctx.strokeStyle = '#FFD700';
-    ctx.lineWidth   = 1.2;
-    ctx.strokeRect(cx - 16, cy - 18, 32, 36);
-
-    // ── Antenna dish (top of bus) ─────────────────────────────────────────────────
-    ctx.beginPath();
-    ctx.ellipse(cx, cy - 24, 10, 5, 0, 0, Math.PI * 2);
-    ctx.fillStyle   = '#e0e0e0';
-    ctx.shadowColor = '#ffffff';
-    ctx.shadowBlur  = 3;
-    ctx.fill();
-    ctx.strokeStyle = '#9e9e9e';
-    ctx.lineWidth   = 0.8;
-    ctx.stroke();
-    ctx.shadowBlur  = 0;
-
-    // Dish stem
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - 18);
-    ctx.lineTo(cx, cy - 19);
-    ctx.strokeStyle = '#bdbdbd';
-    ctx.lineWidth   = 1.5;
-    ctx.stroke();
-
-    // ── Thruster plume glow ───────────────────────────────────────────────────────
-    const plumeGrad = ctx.createRadialGradient(cx, cy + 18, 0, cx, cy + 26, 10);
-    plumeGrad.addColorStop(0,   accentColor);
-    plumeGrad.addColorStop(0.5, accentColor.replace(')', ', 0.4)').replace('rgb', 'rgba'));
-    plumeGrad.addColorStop(1,   'transparent');
-    ctx.fillStyle = plumeGrad;
-    ctx.beginPath();
-    ctx.ellipse(cx, cy + 26, 6, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // ── Name label ────────────────────────────────────────────────────────────────
-    // (no text — canvas label would be unreadable at small sizes)
-
-    return c.toDataURL();
-}
-
-function setupOrbitingSatellites() {
-    if (!globeViewer) return;
-
-    // Pre-render satellite images at high DPI
-    const insat3dImg  = drawSatelliteCanvas('rgb(0,229,255)');   // cyan for INSAT-3D
-    const insat3drImg = drawSatelliteCanvas('rgb(255,214,0)');   // gold for INSAT-3DR
-
-    // INSAT-3D & INSAT-3DR orbit at ~36 000 km (GEO), tilted slightly around India
-    const orbits = [
-        {
-            img:    insat3dImg,
-            label:  'INSAT-3D',
-            color:  Cesium.Color.fromCssColorString('#00E5FF'),
-            offset: 0,
-            alt:    36000000,       // 36 000 km  GEO
-            latAmp: 3,              // small inclination wobble
-            lngAmp: 18
-        },
-        {
-            img:    insat3drImg,
-            label:  'INSAT-3DR',
-            color:  Cesium.Color.fromCssColorString('#FFD600'),
-            offset: Math.PI,
-            alt:    36000000,
-            latAmp: 3,
-            lngAmp: 18
-        }
-    ];
-
-    // ── Draw orbit ring + create satellite entity ─────────────────────────────────
-    orbits.forEach(o => {
-        // Orbit track (ring at GEO altitude)
-        const orbitPts = [];
-        for (let deg = 0; deg <= 360; deg += 3) {
-            const rad = Cesium.Math.toRadians(deg);
-            orbitPts.push(Cesium.Cartesian3.fromDegrees(
-                79.74 + Math.cos(rad) * o.lngAmp,
-                20.0  + Math.sin(rad) * o.latAmp,
-                o.alt
-            ));
-        }
-        globeViewer.entities.add({
-            polyline: {
-                positions: orbitPts,
-                width: 1,
-                material: new Cesium.PolylineDashMaterialProperty({
-                    color: o.color.withAlpha(0.22),
-                    dashLength: 10
-                })
-            }
-        });
-
-        // Scanner beam cone from GEO to surface (translucent)
-        const beamEntity = globeViewer.entities.add({
-            name: o.label + ' Beam',
-            cylinder: {
-                length:       o.alt,
-                topRadius:    0,
-                bottomRadius: 1800000,          // ~1 800 km footprint – realistic INSAT coverage
-                material:     o.color.withAlpha(0.04),
-                outline:      true,
-                outlineColor: o.color.withAlpha(0.12),
-                outlineWidth: 1
-            }
-        });
-        o.beamEntity = beamEntity;
-
-        // Satellite billboard – canvas-drawn spacecraft image
-        const satEntity = globeViewer.entities.add({
-            name: o.label,
-            billboard: {
-                image:                o.img,
-                width:                48,
-                height:               48,
-                verticalOrigin:       Cesium.VerticalOrigin.CENTER,
-                horizontalOrigin:     Cesium.HorizontalOrigin.CENTER,
-                scaleByDistance:      new Cesium.NearFarScalar(1e6, 2.0, 3.6e7, 1.0),
-                translucencyByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1e8, 0.4),
-                disableDepthTestDistance: Number.POSITIVE_INFINITY
-            },
-            label: {
-                text:                 o.label,
-                font:                 '11px Inter, sans-serif',
-                fillColor:            o.color,
-                outlineColor:         Cesium.Color.BLACK,
-                outlineWidth:         2,
-                style:                Cesium.LabelStyle.FILL_AND_OUTLINE,
-                pixelOffset:          new Cesium.Cartesian2(0, -32),
-                disableDepthTestDistance: Number.POSITIVE_INFINITY,
-                translucencyByDistance: new Cesium.NearFarScalar(1e6, 1.0, 1e8, 0.3)
-            }
-        });
-        o.satEntity = satEntity;
-    });
-
-    // ── Animation tick ────────────────────────────────────────────────────────────
-    let tick = 0;
-    globeViewer.scene.preRender.addEventListener(() => {
-        tick += 0.0015;   // slow GEO drift
-
-        orbits.forEach(o => {
-            const angle  = tick + o.offset;
-            const satLat = 20.0  + Math.sin(angle) * o.latAmp;
-            const satLng = 79.74 + Math.cos(angle) * o.lngAmp;
-            const satPos = Cesium.Cartesian3.fromDegrees(satLng, satLat, o.alt);
-
-            o.satEntity.position  = satPos;
-
-            // Beam midpoint
-            const beamLat = satLat / 2;
-            const beamLng = satLng;
-            o.beamEntity.position = Cesium.Cartesian3.fromDegrees(beamLng, beamLat, o.alt / 2);
-        });
-    });
-}
-
-function setupGlobeCyclone() {
-    if (!globeViewer) return;
-
-    // Draw texture spiral
+function createMoonTexture() {
+    const THREE = window.THREE;
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
+    canvas.width = 512;
     canvas.height = 256;
     const ctx = canvas.getContext('2d');
-    
-    function drawSpiral() {
-        ctx.clearRect(0, 0, 256, 256);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.7)';
-        ctx.shadowColor = '#00BCD4';
-        ctx.shadowBlur = 8;
-        ctx.lineWidth = 3.5;
-        
-        for (let arm = 0; arm < 4; arm++) {
-            ctx.beginPath();
-            const startAngle = (arm * Math.PI) / 2;
-            for (let theta = 0; theta < Math.PI * 2.2; theta += 0.1) {
-                const r = theta * 16;
-                const angle = startAngle + theta;
-                const x = 128 + r * Math.cos(angle);
-                const y = 128 + r * Math.sin(angle);
-                if (theta === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            }
-            ctx.stroke();
-        }
-        
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = 'rgba(13, 27, 42, 0.9)';
+
+    // Fill background with bright lunar grey
+    ctx.fillStyle = '#c8c8c8';
+    ctx.fillRect(0, 0, 512, 256);
+
+    // Draw craters (circles of different sizes, light inside, dark shadow)
+    for (let i = 0; i < 300; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 256;
+        const r = 1.5 + Math.random() * 8;
+
+        // Crater rim/shadow
         ctx.beginPath();
-        ctx.arc(128, 128, 18, 0, Math.PI * 2);
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(x - r * 0.12, y - r * 0.12, r * 0.85, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.18)';
         ctx.fill();
     }
+
+    // Draw Maria (dark larger regions)
+    for (let i = 0; i < 10; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 256;
+        const rx = 25 + Math.random() * 45;
+        const ry = 15 + Math.random() * 25;
+
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry));
+        grad.addColorStop(0, 'rgba(45, 45, 45, 0.55)');
+        grad.addColorStop(1, 'rgba(119, 119, 119, 0)');
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(x, y, rx, ry, Math.random() * Math.PI, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createMoonMesh() {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+
+    const moonGeo = new THREE.SphereGeometry(4.5, 32, 32); // Scale: Earth is 100 radius
+    const moonMat = new THREE.MeshStandardMaterial({
+        map: createMoonTexture(),
+        roughness: 0.95,
+        metalness: 0.0,
+        emissive: new THREE.Color(0x282828), // softly visible on night side
+        emissiveIntensity: 0.5
+    });
+    const moonMesh = new THREE.Mesh(moonGeo, moonMat);
+    return moonMesh;
+}
+
+// Compact realistic satellite mesh for scene-space orbit (NOT using globe customLayer)
+function createSmallSatelliteMesh(labelText, colorHexStr) {
+    const THREE = window.THREE;
+    if (!THREE) return new THREE.Group();
+
+    const colorHex = parseInt(colorHexStr.replace('#', ''), 16) || 0x00e5ff;
+    const group = new THREE.Group();
+    const scale = 0.45; // Keep satellites small relative to Earth radius 100
+
+    // 1. Central bus (gold foil)
+    const busGeo = new THREE.BoxGeometry(2.0 * scale, 2.0 * scale, 2.8 * scale);
+    const busMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.2 });
+    const bus = new THREE.Mesh(busGeo, busMat);
+    group.add(bus);
+
+    // 2. Solar panel yoke
+    const yokeGeo = new THREE.CylinderGeometry(0.12 * scale, 0.12 * scale, 8.0 * scale, 8);
+    const yokeMat = new THREE.MeshStandardMaterial({ color: 0x888888, metalness: 0.8, roughness: 0.3 });
+    const yoke = new THREE.Mesh(yokeGeo, yokeMat);
+    yoke.rotation.z = Math.PI / 2;
+    group.add(yoke);
+
+    // 3. Solar panels (dark blue-black)
+    const panelGeo = new THREE.BoxGeometry(3.8 * scale, 0.08 * scale, 1.8 * scale);
+    const panelMat = new THREE.MeshStandardMaterial({ color: 0x0a1428, metalness: 0.7, roughness: 0.1, emissive: 0x030810 });
+    const frameGeo = new THREE.BoxGeometry(4.0 * scale, 0.1 * scale, 2.0 * scale);
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, metalness: 0.7, roughness: 0.4 });
+
+    const leftPanel = new THREE.Mesh(panelGeo, panelMat);
+    leftPanel.position.set(-5.2 * scale, 0, 0);
+    const leftFrame = new THREE.Mesh(frameGeo, frameMat);
+    leftFrame.position.set(-5.2 * scale, 0, 0);
+
+    const rightPanel = new THREE.Mesh(panelGeo, panelMat);
+    rightPanel.position.set(5.2 * scale, 0, 0);
+    const rightFrame = new THREE.Mesh(frameGeo, frameMat);
+    rightFrame.position.set(5.2 * scale, 0, 0);
+
+    group.add(leftPanel, leftFrame, rightPanel, rightFrame);
+
+    // 4. Parabolic antenna dish
+    const dishGeo = new THREE.ConeGeometry(1.0 * scale, 0.5 * scale, 12, 1, true);
+    const dishMat = new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.6, roughness: 0.4, side: THREE.DoubleSide });
+    const dish = new THREE.Mesh(dishGeo, dishMat);
+    dish.position.set(0, 0, 1.8 * scale);
+    dish.rotation.x = Math.PI / 2;
+    group.add(dish);
+
+    // 5. Thruster nozzles
+    const thrGeo = new THREE.CylinderGeometry(0.14 * scale, 0.22 * scale, 0.4 * scale, 6);
+    const thrMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9 });
+    const t1 = new THREE.Mesh(thrGeo, thrMat);
+    t1.position.set(0.5 * scale, 0, -1.6 * scale);
+    t1.rotation.x = Math.PI / 2;
+    const t2 = t1.clone();
+    t2.position.set(-0.5 * scale, 0, -1.6 * scale);
+    group.add(t1, t2);
+
+    // 6. Blinking communication light
+    const lightGeo = new THREE.SphereGeometry(0.22 * scale, 8, 8);
+    const lightMat = new THREE.MeshBasicMaterial({ color: colorHex, transparent: true, opacity: 1.0 });
+    const blinkingLight = new THREE.Mesh(lightGeo, lightMat);
+    blinkingLight.position.set(0, 1.2 * scale, 0);
+    group.add(blinkingLight);
+
+    // 7. Floating label sprite
+    const labelCanvas = document.createElement('canvas');
+    labelCanvas.width = 320; labelCanvas.height = 72;
+    const ctx = labelCanvas.getContext('2d');
+    const lx = 4, ly = 4, lw = 312, lh = 64, lr = 10;
+    ctx.fillStyle = 'rgba(6,12,24,0.88)';
+    ctx.strokeStyle = colorHexStr;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(lx+lr,ly); ctx.arcTo(lx+lw,ly,lx+lw,ly+lh,lr);
+    ctx.arcTo(lx+lw,ly+lh,lx,ly+lh,lr); ctx.arcTo(lx,ly+lh,lx,ly,lr); ctx.arcTo(lx,ly,lx+lw,ly,lr);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    // Satellite emoji + name
+    ctx.font = 'bold 18px Inter, sans-serif';
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('🛰 ' + (labelText || 'SAT'), 160, 28);
+    // Status dot + Active
+    ctx.fillStyle = '#00e676';
+    ctx.beginPath(); ctx.arc(120, 50, 4, 0, Math.PI*2); ctx.fill();
+    ctx.font = '11px Inter, sans-serif';
+    ctx.fillStyle = '#00e676';
+    ctx.fillText('Active', 160, 50);
+
+    const labelTex = new THREE.CanvasTexture(labelCanvas);
+    const labelSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTex, transparent: true }));
+    labelSprite.scale.set(22 * scale, 5 * scale, 1);
+    labelSprite.position.set(0, 8 * scale, 0);
+    group.add(labelSprite);
+
+    group.userData = { label: labelText, leftPanel, rightPanel, leftFrame, rightFrame, blinkingLight };
+    return group;
+}
+
+function createSunTexture() {
+    const THREE = window.THREE;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    // Draw main glowing sun core with radial gradient
+    const grad = ctx.createRadialGradient(256, 256, 0, 256, 256, 256);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.15, '#fff0b3');
+    grad.addColorStop(0.35, '#ff9900');
+    grad.addColorStop(0.55, '#ff3300');
+    grad.addColorStop(0.75, '#550500');
+    grad.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
+
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(256, 256, 256, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw 24 beautiful, fading radial sun flares/rays (matching reference image)
+    for (let i = 0; i < 24; i++) {
+        const angle = (i / 24) * Math.PI * 2;
+        const cos = Math.cos(angle);
+        const sin = Math.sin(angle);
+        const length = 180 + (i % 2 === 0 ? 60 : 25) + Math.random() * 10;
+        
+        const gradRay = ctx.createLinearGradient(
+            256 + cos * 40, 256 + sin * 40,
+            256 + cos * length, 256 + sin * length
+        );
+        gradRay.addColorStop(0, 'rgba(255, 235, 160, 0.7)');
+        gradRay.addColorStop(0.3, 'rgba(255, 110, 0, 0.4)');
+        gradRay.addColorStop(1.0, 'rgba(255, 30, 0, 0)');
+        
+        ctx.strokeStyle = gradRay;
+        ctx.lineWidth = i % 2 === 0 ? 4 : 2;
+        ctx.beginPath();
+        ctx.moveTo(256 + cos * 30, 256 + sin * 30);
+        ctx.lineTo(256 + cos * length, 256 + sin * length);
+        ctx.stroke();
+    }
+
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createSunSprite() {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+
+    const sunSpriteMat = new THREE.SpriteMaterial({
+        map: createSunTexture(),
+        blending: THREE.AdditiveBlending,
+        color: 0xffffff
+    });
+    const sunSprite = new THREE.Sprite(sunSpriteMat);
+    sunSprite.scale.set(200, 200, 1); // Large glowing Sun at scene center
+    sunSprite.position.set(0, 0, 0);
+    return sunSprite;
+}
+
+function createStarfield() {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsCount = 2500;
+    const positions = new Float32Array(starsCount * 3);
+    const colors = new Float32Array(starsCount * 3);
+
+    for (let i = 0; i < starsCount * 3; i += 3) {
+        // Distribute stars on a sphere of radius 450 to 600 (well within far clipping plane)
+        const radius = 450 + Math.random() * 150;
+        const u = Math.random();
+        const v = Math.random();
+        const theta = u * 2.0 * Math.PI;
+        const phi = Math.acos(2.0 * v - 1.0);
+
+        positions[i]     = radius * Math.sin(phi) * Math.cos(theta);
+        positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
+        positions[i + 2] = radius * Math.cos(phi);
+
+        const r = Math.random();
+        if (r < 0.15) {
+            colors[i]     = 0.75; colors[i + 1] = 0.8; colors[i + 2] = 1.0; // blue-ish
+        } else if (r < 0.25) {
+            colors[i]     = 1.0; colors[i + 1] = 0.95; colors[i + 2] = 0.8; // yellow-ish
+        } else {
+            colors[i]     = 1.0; colors[i + 1] = 1.0; colors[i + 2] = 1.0; // white
+        }
+    }
+
+    starsGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    starsGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const starsMaterial = new THREE.PointsMaterial({
+        size: 2.2,
+        vertexColors: true,
+        transparent: true,
+        opacity: 0.95
+    });
+
+    return new THREE.Points(starsGeometry, starsMaterial);
+}
+
+function startSpaceSceneAnimation() {
+    if (spaceAnimationId) return; // already running
+
+    const THREE = window.THREE;
+    if (!THREE) return;
+
+    // Set camera far plane here as well to guarantee celestial objects aren't clipped
+    if (globeViewer && globeViewer.camera()) {
+        globeViewer.camera().far = 10000;
+        globeViewer.camera().updateProjectionMatrix();
+    }
+
+    const animate = () => {
+        spaceAnimationId = requestAnimationFrame(animate);
+
+        // Only animate if the container is visible
+        const container = document.getElementById("satellite-globe-container");
+        if (!container || container.classList.contains("hidden")) {
+            return;
+        }
+
+        spaceTick += 0.0015;
+
+        // 1. Rotate Starfield slowly
+        if (starfieldPoints) {
+            starfieldPoints.rotation.y = spaceTick * 0.015;
+            starfieldPoints.rotation.x = spaceTick * 0.008;
+        }
+
+        // 2. Earth orbits the Sun (Sun is fixed at 0,0,0; Earth moves) and self-rotates
+        if (AppState.playback.isPlaying) {
+            earthOrbitAngle += 0.000375 * AppState.playback.speed;
+        }
+        if (globeViewer && globeViewer.earthGroup) {
+            const hourRatio = AppState.timeHour / 24.0;
+            // Lock Earth Y-rotation based on the hour. India (79° E = 1.38 rad) faces the Sun (angle -earthOrbitAngle) at 12 PM (hourRatio = 0.5)
+            globeViewer.earthGroup.rotation.y = -earthOrbitAngle - Math.PI - 1.38 + (hourRatio * 2 * Math.PI);
+        }
+        const EARTH_ORBIT_RADIUS = 380;
+        const ex = EARTH_ORBIT_RADIUS * Math.cos(earthOrbitAngle);
+        const ez = EARTH_ORBIT_RADIUS * Math.sin(earthOrbitAngle);
+        const ey = 18; // slight inclination
+
+        // Move Earth group to its orbit position around the Sun
+        if (globeViewer && globeViewer.earthGroup) {
+            globeViewer.earthGroup.position.set(ex, ey, ez);
+        }
+
+        // Smoothly update OrbitControls target to follow Earth or focused satellite
+        if (globeViewer && globeViewer.controls()) {
+            const ctrl = globeViewer.controls();
+            let targetVec = null;
+            let lerpFactor = 0.05;
+
+            if (window.focusedSatelliteName) {
+                const satObj = sceneSatellites.find(s => s.label === window.focusedSatelliteName);
+                if (satObj) {
+                    targetVec = satObj.mesh.position;
+                    lerpFactor = 0.08; // tighter tracking for moving satellite
+                }
+            }
+
+            if (!targetVec) {
+                const earthVec = new THREE.Vector3(ex, ey, ez);
+                const camToEarth = globeViewer.camera().position.distanceTo(earthVec);
+                targetVec = earthVec;
+                lerpFactor = camToEarth > 350 ? 0.001 : camToEarth > 150 ? 0.015 : 0.05;
+            }
+
+            ctrl.target.lerp(targetVec, lerpFactor);
+        }
+
+        // Directional light always points FROM Sun TO Earth
+        if (globeViewer) {
+            let dirLight = null;
+            globeViewer.scene().traverse(child => {
+                if (child.type === 'DirectionalLight') dirLight = child;
+            });
+            if (dirLight) {
+                dirLight.position.set(-ex, -ey, -ez); // Direction from Earth toward Sun
+            }
+            // Update shader sunPosition to be relative to Earth (Sun - Earth = -Earth position since Sun is at 0)
+            if (globeViewer.earthMesh && globeViewer.earthMesh.material.uniforms) {
+                // Sun direction in world space, relative to Earth's world origin
+                globeViewer.earthMesh.material.uniforms.sunPosition.value.set(-ex, -ey, -ez);
+            }
+        }
+
+        // Sun sprite stays at origin — no movement needed
+
+        // 3. Moon orbits Earth (Moon position is relative to Earth group, so offset by Earth pos)
+        if (moonMesh) {
+            moonAngle = spaceTick * 4.0;
+            const moonDistance = 145;
+            const mx = ex + moonDistance * Math.cos(moonAngle);
+            const mz = ez + moonDistance * Math.sin(moonAngle);
+            const my = ey + moonDistance * Math.sin(moonAngle) * 0.22;
+            moonMesh.position.set(mx, my, mz);
+            moonMesh.rotation.y = spaceTick * 0.4;
+        }
+
+        // 4. (reserved — scene-space satellites handled in section 7 below)
+
+        // 6. Update Live AI Fusion Stream Log in UI
+        if (Date.now() - lastLogTime > 2000) {
+            lastLogTime = Date.now();
+            const logContainer = document.getElementById('sat-ai-stream-log');
+            if (logContainer) {
+                const messages = [
+                    { tag: 'INSAT-3DR', text: 'Streaming weather & cloud cover data...', color: 'text-cyan-400 font-bold' },
+                    { tag: 'Atmosphere Engine', text: 'Fusing temperature & humidity profiles...', color: 'text-slate-400' },
+                    { tag: 'Oceansat-3', text: 'Streaming sea surface temp & wind vectors...', color: 'text-emerald-400 font-bold' },
+                    { tag: 'Ocean Engine', text: 'Analyzing cyclone formation indicators...', color: 'text-slate-400' },
+                    { tag: 'Resourcesat-2A', text: 'Streaming land vegetation NDVI indices...', color: 'text-orange-400 font-bold' },
+                    { tag: 'Land Engine', text: 'Assessing soil moisture & drought risk...', color: 'text-slate-400' },
+                    { tag: 'ROOK AI Fusion', text: 'Fusing multi-spectral orbital observations...', color: 'text-cyan-300 font-bold' },
+                    { tag: 'ROOK AI Fusion', text: 'Digital Twin Synchronized & Updated.', color: 'text-emerald-300 font-bold' }
+                ];
+                const msg = messages[logIndex % messages.length];
+                logIndex++;
+                
+                const timeStr = new Date().toTimeString().split(' ')[0];
+                const logLine = document.createElement('div');
+                logLine.className = 'text-[9.5px] border-b border-white/5 pb-0.5';
+                logLine.innerHTML = `<span class="text-slate-500">[${timeStr}]</span> <span class="${msg.color}">[${msg.tag}]</span> <span class="text-slate-300">${msg.text}</span>`;
+                logContainer.appendChild(logLine);
+                logContainer.scrollTop = logContainer.scrollHeight;
+                
+                while (logContainer.children.length > 20) {
+                    logContainer.removeChild(logContainer.firstChild);
+                }
+            }
+        }
+        // 7. Update scene-space satellite positions (orbit around Earth's current world position)
+        if (sceneSatellites.length > 0) {
+            const THREE = window.THREE;
+            const earthCenter = new THREE.Vector3(ex, ey, ez);
+
+            sceneSatellites.forEach(sat => {
+                const angle = spaceTick * sat.speed + sat.phase;
+
+                // ── Orbital mechanics: inclined elliptical orbit ──────────────
+                // Build a local orbit basis:
+                //   basisX = orbit 'right' (cosine direction)
+                //   basisY = orbit 'up' (inclined by sat.incline from world Y)
+                //   basisZ = perpendicular
+                const cosInc = Math.cos(sat.incline);
+                const sinInc = Math.sin(sat.incline);
+
+                // The orbital plane normal for this satellite:
+                // INSAT-3DR: almost equatorial (incline≈0) → flat ring
+                // Oceansat-3: polar (incline≈π/2) → vertical ring
+                // Resourcesat-2A: sun-sync (incline≈0.95) → tilted ring
+                const localX = sat.radius * Math.cos(angle);
+                const localY = sat.radius * Math.sin(angle) * sinInc;
+                const localZ = sat.radius * Math.sin(angle) * cosInc;
+
+                sat.mesh.position.set(ex + localX, ey + localY, ez + localZ);
+
+                // Face toward Earth center
+                if (THREE) sat.mesh.lookAt(earthCenter);
+
+                // ── Update orbit ring position + plane to match Earth ─────────
+                if (sat.orbitRing) {
+                    sat.orbitRing.position.copy(earthCenter);
+                    sat.glowRing.position.copy(earthCenter);
+
+                    // Tilt ring to match orbital plane:
+                    // For incline=0 → flat (X-Z plane) → rotate X by π/2
+                    // For incline=π/2 → vertical → no X rotation
+                    // We use Euler: first rotate X by -π/2 to lay flat, then tilt by incline
+                    sat.orbitRing.rotation.set(-Math.PI / 2 + sat.incline, 0, 0);
+                    sat.glowRing.rotation.set(-Math.PI / 2 + sat.incline, 0, 0);
+
+                    // Pulse orbit ring opacity with satellite speed
+                    const pulse = 0.45 + 0.1 * Math.sin(Date.now() / 600 + sat.phase);
+                    sat.orbitRing.material.opacity = pulse;
+                    sat.glowRing.material.opacity = pulse * 0.25;
+                }
+
+                // ── Update Beam Line position to connect to India ─────────────
+                if (sat.beamLine) {
+                    const localIndia = getCartesianCoords(20.5937, 78.9629, 0.0, 100);
+                    // Rotate relative point by Earth self-rotation
+                    localIndia.applyAxisAngle(new THREE.Vector3(0, 1, 0), globeViewer.earthGroup.rotation.y);
+                    // Translate relative point by Earth orbit position
+                    const worldIndia = localIndia.add(earthCenter);
+                    sat.beamLine.geometry.setFromPoints([sat.mesh.position, worldIndia]);
+                    sat.beamLine.geometry.attributes.position.needsUpdate = true;
+                }
+
+                // Spin solar panels
+                if (sat.mesh.userData.leftPanel) {
+                    const pRot = (Date.now() / 2200) % (Math.PI * 2);
+                    sat.mesh.userData.leftPanel.rotation.x = pRot;
+                    sat.mesh.userData.rightPanel.rotation.x = pRot;
+                    if (sat.mesh.userData.leftFrame) sat.mesh.userData.leftFrame.rotation.x = pRot;
+                    if (sat.mesh.userData.rightFrame) sat.mesh.userData.rightFrame.rotation.x = pRot;
+                }
+                // Pulse blinking light
+                if (sat.mesh.userData.blinkingLight) {
+                    const t = Math.sin(Date.now() / 400 + sat.phase);
+                    sat.mesh.userData.blinkingLight.material.opacity = 0.4 + 0.6 * Math.max(0, t);
+                }
+            });
+        }
+    };
+
+    spaceAnimationId = requestAnimationFrame(animate);
+}
+
+let globePolygons = [];
+let currentZoomCategory = 'space'; // 'space', 'country', 'state'
+
+function setupGlobePolygons() {
+    const simplifyGeom = (geom, factor = 8) => {
+        if (!geom || !geom.coordinates) return geom;
+        if (geom.type === 'Polygon') {
+            geom.coordinates = geom.coordinates.map(ring => 
+                ring.filter((_, idx) => idx % factor === 0 || idx === ring.length - 1)
+            );
+        } else if (geom.type === 'MultiPolygon') {
+            geom.coordinates = geom.coordinates.map(poly => 
+                poly.map(ring => 
+                    ring.filter((_, idx) => idx % factor === 0 || idx === ring.length - 1)
+                )
+            );
+        }
+        return geom;
+    };
+
+    // Load India states GeoJSON
+    fetch('/static/geojson/india_states.geojson')
+        .then(res => res.json())
+        .then(india => {
+            const indiaFeatures = india.features.map(f => {
+                f.properties = f.properties || {};
+                f.properties.isIndiaState = true;
+                f.geometry = simplifyGeom(f.geometry, 8); // Downsample by 8x for fast rendering
+                return f;
+            });
+            globePolygons = globePolygons.concat(indiaFeatures);
+            updateGlobePolygons();
+        })
+        .catch(err => console.warn("[R.O.O.K] Failed to load India states GeoJSON:", err));
+
+    // Load AP districts GeoJSON
+    fetch('/static/geojson/andhra_pradesh.geojson')
+        .then(res => res.json())
+        .then(ap => {
+            const apFeatures = ap.features.map(f => {
+                f.properties = f.properties || {};
+                f.properties.isAP = true;
+                f.geometry = simplifyGeom(f.geometry, 3); // Downsample by 3x for responsiveness
+                return f;
+            });
+            globePolygons = globePolygons.concat(apFeatures);
+            updateGlobePolygons();
+        })
+        .catch(err => console.warn("[R.O.O.K] Failed to load AP districts GeoJSON:", err));
+}
+
+function getPolygonColor(d) {
+    if (d.properties && d.properties.isIndiaState && !d.properties.isAP) {
+        return 'rgba(0, 229, 255, 0.03)'; // transparent outline for other India states
+    }
+    const name = d.properties ? (d.properties.district_name || d.properties.NAME_2 || d.properties.name || d.properties.NAME_1) : 'Andhra Pradesh';
+    const station = DISTRICT_STATIONS.find(s => s.name.toLowerCase() === name.toLowerCase());
     
-    drawSpiral();
-
-    globeCycloneEntity = globeViewer.entities.add({
-        name: 'Bay of Bengal Cyclone Anomaly',
-        position: Cesium.Cartesian3.fromDegrees(84.50, 15.50, 2000),
-        billboard: {
-            image: canvas,
-            width: 480000,
-            height: 480000,
-            rotation: 0.0
+    if (station) {
+        if (AppState.activeLayers.temperature) {
+            return getColorForVal(station.temp, TEMP_COLOR_STOPS);
+        } else if (AppState.activeLayers.rainfall) {
+            return getColorForVal(station.rain, RAIN_COLOR_STOPS);
+        } else if (AppState.activeLayers.humidity) {
+            return getColorForVal(station.humidity, HUMIDITY_COLOR_STOPS);
+        } else if (AppState.activeLayers.wind) {
+            return getColorForVal(station.wind, WIND_COLOR_STOPS);
+        } else if (AppState.activeLayers.pressure) {
+            return getColorForVal(station.pressure, PRESSURE_COLOR_STOPS);
         }
-    });
+    }
+    return 'rgba(0, 184, 217, 0.12)';
+}
 
-    globeViewer.scene.preRender.addEventListener(function() {
-        if (globeCycloneEntity && globeCycloneEntity.billboard) {
-            globeCycloneEntity.billboard.rotation += 0.006;
+function updateGlobePolygons() {
+    if (!globeViewer) return;
+    
+    // Bind controls event listener to dynamically scale layers based on camera altitude
+    // This implements Level 1 (Space) -> Level 2/3 (Country) -> Level 4 (State/District) performance scaling
+    globeViewer.controls().removeEventListener('change', handleCameraChange);
+    globeViewer.controls().addEventListener('change', handleCameraChange);
+
+    // Initial render
+    handleCameraChange();
+}
+
+function handleCameraChange() {
+    if (!globeViewer) return;
+    const pov = globeViewer.pointOfView();
+    const alt = pov.altitude;
+    
+    let newCategory = 'space';
+    if (alt <= 0.8) {
+        newCategory = 'state';
+    } else if (alt <= 2.2) {
+        newCategory = 'country';
+    }
+    
+    if (newCategory !== currentZoomCategory || globeViewer.polygonsData().length === 0) {
+        currentZoomCategory = newCategory;
+        if (newCategory === 'space') {
+            globeViewer.polygonsData([]);
+        } else if (newCategory === 'country') {
+            const indiaStates = globePolygons.filter(d => d.properties.isIndiaState && !d.properties.isAP);
+            globeViewer.polygonsData(indiaStates)
+                .polygonAltitude(() => 0.003)
+                .polygonCapColor(() => 'rgba(0, 229, 255, 0.02)')
+                .polygonStrokeColor(() => 'rgba(0, 229, 255, 0.15)')
+                .polygonLabel(d => {
+                    const name = d.properties ? (d.properties.NAME_1 || d.properties.name) : 'State';
+                    return `<div style="background: rgba(10, 25, 47, 0.95); border: 1px solid #00E5FF; border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 11px; font-family: Inter, sans-serif; pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+                        <b>${name}</b>
+                    </div>`;
+                });
+        } else {
+            globeViewer.polygonsData(globePolygons)
+                .polygonAltitude(d => d.properties.isAP ? 0.008 : 0.003)
+                .polygonCapColor(getPolygonColor)
+                .polygonStrokeColor(d => d.properties.isAP ? '#00E5FF' : 'rgba(0, 229, 255, 0.08)')
+                .polygonLabel(d => {
+                    const name = d.properties ? (d.properties.district_name || d.properties.NAME_2 || d.properties.name || d.properties.NAME_1) : 'Region';
+                    return `<div style="background: rgba(10, 25, 47, 0.95); border: 1px solid #00E5FF; border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 11px; font-family: Inter, sans-serif; pointer-events: none; box-shadow: 0 4px 10px rgba(0,0,0,0.5);">
+                        <b>${name}</b>
+                    </div>`;
+                });
         }
-    });
+        setupGlobeInteraction();
+    }
 }
 
 function setupGlobeInteraction() {
-    if (!globeViewer) return;
-    const handler = new Cesium.ScreenSpaceEventHandler(globeViewer.scene.canvas);
-    
-    let previousPickedEntity = null;
-    
-    // Hover
-    handler.setInputAction(function(movement) {
-        const pickedObject = globeViewer.scene.pick(movement.endPosition);
-        if (previousPickedEntity && previousPickedEntity.polygon) {
-            previousPickedEntity.polygon.outlineColor = Cesium.Color.fromCssColorString('#26C6DA').withAlpha(0.6);
-            previousPickedEntity.polygon.outlineWidth = 2;
-        }
-        
-        if (Cesium.defined(pickedObject) && pickedObject.id && pickedObject.id.polygon) {
-            const entity = pickedObject.id;
-            entity.polygon.outlineColor = Cesium.Color.WHITE;
-            entity.polygon.outlineWidth = 3;
-            previousPickedEntity = entity;
-            
-            const name = entity.properties.district_name || entity.properties.NAME_2 || entity.name;
-            document.getElementById("sat-region-name").innerText = name;
-        }
-    }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
-
-    // Click
-    handler.setInputAction(function(click) {
-        const pickedObject = globeViewer.scene.pick(click.position);
-        if (Cesium.defined(pickedObject) && pickedObject.id) {
-            const entity = pickedObject.id;
-            const name = entity.properties.district_name || entity.properties.NAME_2 || entity.name;
-            handleDistrictClick(name);
-        }
-    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    let hoveredPolygon = null;
+    globeViewer
+        .onPolygonHover(polygon => {
+            if (hoveredPolygon === polygon) return;
+            hoveredPolygon = polygon;
+            globeViewer.polygonStrokeColor(d => d === hoveredPolygon ? '#FFFFFF' : (d.properties.isAP ? '#00E5FF' : 'rgba(0, 229, 255, 0.15)'));
+        })
+        .onPolygonClick((polygon) => {
+            if (!polygon) return;
+            const name = polygon.properties ? (polygon.properties.district_name || polygon.properties.NAME_2 || polygon.properties.name || polygon.properties.NAME_1) : null;
+            if (name) {
+                handleDistrictClick(name);
+            }
+        });
 }
 
 function handleDistrictClick(districtName) {
@@ -3965,49 +5364,32 @@ function handleDistrictClick(districtName) {
         AppState.selectedLat = station.coords[0];
         AppState.selectedLng = station.coords[1];
         
-        document.getElementById("sat-region-name").innerText = station.name;
-        document.getElementById("sat-region-coords").innerText = `${station.coords[0].toFixed(2)}° N, ${station.coords[1].toFixed(2)}° E`;
-        document.getElementById("location-indicator").innerText = station.name;
+        const regionNameEl = document.getElementById("sat-region-name");
+        if (regionNameEl) regionNameEl.innerText = station.name;
+        
+        const coordsEl = document.getElementById("sat-region-coords");
+        if (coordsEl) coordsEl.innerText = `${station.coords[0].toFixed(2)}° N, ${station.coords[1].toFixed(2)}° E`;
+        
+        const indicatorEl = document.getElementById("location-indicator");
+        if (indicatorEl) indicatorEl.innerText = station.name;
         
         syncSatClimateCards(station);
     }
 }
 
 function colorGlobeDistricts() {
-    if (!globeDistrictsDataSource) return;
-    const entities = globeDistrictsDataSource.entities.values;
-
-    entities.forEach(entity => {
-        const name = entity.properties.district_name || entity.properties.NAME_2 || entity.name;
-        const station = DISTRICT_STATIONS.find(s => s.name.toLowerCase() === name.toLowerCase());
-        
-        let color = Cesium.Color.fromCssColorString('#00BCD4').withAlpha(0.08);
-        
-        if (station) {
-            if (AppState.activeLayers.temperature) {
-                color = getCesiumColorForVal(station.temp, TEMP_COLOR_STOPS);
-            } else if (AppState.activeLayers.rainfall) {
-                color = getCesiumColorForVal(station.rain, RAIN_COLOR_STOPS);
-            } else if (AppState.activeLayers.humidity) {
-                color = getCesiumColorForVal(station.humidity, HUMIDITY_COLOR_STOPS);
-            } else if (AppState.activeLayers.wind) {
-                color = getCesiumColorForVal(station.wind, WIND_COLOR_STOPS);
-            } else if (AppState.activeLayers.pressure) {
-                color = getCesiumColorForVal(station.pressure, PRESSURE_COLOR_STOPS);
-            }
-        }
-        
-        entity.polygon.material = color;
-    });
+    if (globeViewer && typeof globeViewer.polygonCapColor === 'function') {
+        globeViewer.polygonCapColor(getPolygonColor);
+    }
 }
 
-function getCesiumColorForVal(val, stops) {
-    if (!stops || stops.length === 0) return Cesium.Color.WHITE.withAlpha(0.1);
+function getColorForVal(val, stops) {
+    if (!stops || stops.length === 0) return 'rgba(255, 255, 255, 0.1)';
     let low = stops[0];
     let high = stops[stops.length - 1];
     
-    if (val <= low.val) return Cesium.Color.fromBytes(low.r, low.g, low.b, low.a);
-    if (val >= high.val) return Cesium.Color.fromBytes(high.r, high.g, high.b, high.a);
+    if (val <= low.val) return `rgba(${low.r}, ${low.g}, ${low.b}, ${low.a / 255})`;
+    if (val >= high.val) return `rgba(${high.r}, ${high.g}, ${high.b}, ${high.a / 255})`;
     
     for (let i = 0; i < stops.length - 1; i++) {
         if (val >= stops[i].val && val <= stops[i+1].val) {
@@ -4021,44 +5403,252 @@ function getCesiumColorForVal(val, stops) {
     const r = Math.round(low.r + ratio * (high.r - low.r));
     const g = Math.round(low.g + ratio * (high.g - low.g));
     const b = Math.round(low.b + ratio * (high.b - low.b));
-    const a = Math.round(low.a + ratio * (high.a - low.a));
-    return Cesium.Color.fromBytes(r, g, b, a);
+    const a = low.a + ratio * (high.a - low.a);
+    return `rgba(${r}, ${g}, ${b}, ${a / 255})`;
+}
+
+let satElements = [];
+function setupOrbitingSatellites() {
+    if (!globeViewer) return;
+
+    // Orbit metadata used by the sidebar table and info panel
+    const orbits = [
+        {
+            label:       'INSAT-3DR',
+            mission:     'Atmospheric Observation',
+            engine:      'ROOK Climate Engine',
+            altitude_km: 35786,
+            color:       '#2196F3',
+            type:        'GEO',
+            streams:     ['Cloud Cover', 'Rainfall', 'Humidity', 'Wind', 'Temperature', 'Pressure'],
+            description: 'Geostationary atmospheric sentinel monitoring weather, clouds, and extreme events over India.',
+        },
+        {
+            label:       'Oceansat-3',
+            mission:     'Ocean Intelligence',
+            engine:      'ROOK Ocean Engine',
+            altitude_km: 517,
+            color:       '#00C853',
+            type:        'polar',
+            streams:     ['Sea Surface Temp', 'Ocean Wind', 'Chlorophyll', 'Wave Height', 'Coastal Currents'],
+            description: 'Polar-orbiting ocean observer tracking SST, cyclone genesis, and coastal weather patterns.',
+        },
+        {
+            label:       'Resourcesat-2A',
+            mission:     'Land Intelligence',
+            engine:      'ROOK Land Engine',
+            altitude_km: 817,
+            color:       '#FF6D00',
+            type:        'sun-sync',
+            streams:     ['NDVI Index', 'Vegetation Cover', 'Soil Moisture', 'Agriculture', 'Forest Stress'],
+            description: 'Sun-synchronous land observer mapping vegetation, drought risk, and agricultural productivity.',
+        }
+    ];
+
+    // Store orbit metadata for the info panel (no globe-layer meshes; real meshes are scene-space)
+    satElements = orbits.map(o => ({
+        label:       o.label,
+        mission:     o.mission,
+        engine:      o.engine,
+        altitude_km: o.altitude_km,
+        color:       o.color,
+        type:        'satellite',
+        streams:     o.streams,
+        description: o.description,
+        _orbit:      o
+    }));
+
+    // Global focus: camera glides toward and tracks the selected satellite
+    window.focusSatelliteByName = function(name) {
+        const sat = satElements.find(d => d.label === name);
+        if (sat) {
+            showSatelliteInfoPanel(sat, null);
+        }
+        
+        const satObj = sceneSatellites.find(s => s.label === name);
+        if (satObj) {
+            window.focusedSatelliteName = name;
+            
+            // Smoothly move camera close to the satellite
+            const camera = globeViewer.camera();
+            const controls = globeViewer.controls();
+            if (camera && controls) {
+                stopGlobeAutoRotate();
+                const satPos = satObj.mesh.position.clone();
+                // Position camera slightly offset from the satellite
+                const targetCamPos = satPos.clone().add(new THREE.Vector3(15, 10, 30));
+                
+                if (window.gsap) {
+                    gsap.to(camera.position, {
+                        x: targetCamPos.x,
+                        y: targetCamPos.y,
+                        z: targetCamPos.z,
+                        duration: 1.5,
+                        ease: 'power2.inOut'
+                    });
+                    gsap.to(controls.target, {
+                        x: satPos.x,
+                        y: satPos.y,
+                        z: satPos.z,
+                        duration: 1.5,
+                        ease: 'power2.inOut',
+                        onUpdate: () => {
+                            controls.update();
+                        }
+                    });
+                }
+            }
+        }
+    };
+}
+
+// ── SATELLITE INFO PANEL ────────────────────────────────────────────────────────
+let satPanelDismissHandler = null;
+
+function showSatelliteInfoPanel(sat, event) {
+    let panel = document.getElementById('rook-sat-panel');
+    if (!panel) {
+        panel = document.createElement('div');
+        panel.id = 'rook-sat-panel';
+        panel.style.cssText = `
+            position: absolute;
+            top: 80px; right: 24px;
+            width: 270px;
+            background: rgba(8, 18, 36, 0.92);
+            backdrop-filter: blur(18px);
+            border: 1px solid rgba(0, 229, 255, 0.25);
+            border-radius: 14px;
+            padding: 20px;
+            z-index: 9999;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(0,229,255,0.08), inset 0 1px 0 rgba(255,255,255,0.05);
+            font-family: 'Inter', sans-serif;
+            color: #e2e8f0;
+            animation: rook-panel-in 0.25s cubic-bezier(.22,.68,0,1.2) both;
+            pointer-events: all;
+        `;
+        // Append to satellite panel overlay so it's on top of all layers
+        const container = document.getElementById('panel-satellite') || document.body;
+        container.appendChild(panel);
+
+        // Add animation
+        if (!document.getElementById('rook-sat-panel-style')) {
+            const style = document.createElement('style');
+            style.id = 'rook-sat-panel-style';
+            style.textContent = `
+                @keyframes rook-panel-in { from { opacity:0; transform: translateY(-10px) scale(0.96); } to { opacity:1; transform: none; } }
+                @keyframes rook-pulse-stream { 0%,100% { opacity:0.5; } 50% { opacity:1; } }
+                .rook-stream-row { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
+                .rook-stream-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; animation: rook-pulse-stream 1.5s ease-in-out infinite; }
+                .rook-panel-close { background:none; border:none; cursor:pointer; color:#94a3b8; font-size:18px; line-height:1; padding:0; }
+                .rook-panel-close:hover { color:#fff; }
+                .rook-panel-btn { background: rgba(0,229,255,0.08); border:1px solid rgba(0,229,255,0.3); color:#00e5ff; border-radius:8px; padding:8px 14px; cursor:pointer; font-size:11px; font-weight:600; letter-spacing:0.05em; flex:1; transition: background 0.2s; }
+                .rook-panel-btn:hover { background: rgba(0,229,255,0.18); }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
+    const colorRgb = sat.color.replace('#', '');
+    const r = parseInt(colorRgb.substring(0,2), 16);
+    const g = parseInt(colorRgb.substring(2,4), 16);
+    const b = parseInt(colorRgb.substring(4,6), 16);
+
+    const streamsHtml = (sat.streams || []).map((s, i) => `
+        <div class="rook-stream-row">
+            <div class="rook-stream-dot" style="background:${sat.color}; animation-delay:${i * 0.3}s;"></div>
+            <span style="font-size:11px; color:#94a3b8;">${s}</span>
+            <span style="margin-left:auto; font-size:10px; color:${sat.color}; font-weight:600;">LIVE</span>
+        </div>
+    `).join('');
+
+    panel.innerHTML = `
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:14px;">
+            <div>
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <span style="font-size:18px;">🛰</span>
+                    <span style="font-size:14px; font-weight:700; color:#f1f5f9; letter-spacing:0.02em;">${sat.label}</span>
+                </div>
+                <div style="font-size:10px; color:${sat.color}; font-weight:600; letter-spacing:0.06em; text-transform:uppercase;">${sat.mission}</div>
+            </div>
+            <button class="rook-panel-close" onclick="hideSatelliteInfoPanel()">✕</button>
+        </div>
+        
+        <div style="display:flex; align-items:center; gap:6px; margin-bottom:14px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:#00e676;box-shadow:0 0 6px #00e676;display:inline-block;"></span>
+            <span style="font-size:11px; color:#00e676; font-weight:600;">ACTIVE</span>
+            <span style="margin-left:auto; font-size:10px; color:#64748b;">${sat.altitude_km?.toLocaleString()} km altitude</span>
+        </div>
+
+        <div style="background:rgba(255,255,255,0.03); border-radius:8px; padding:10px 12px; margin-bottom:14px;">
+            <div style="font-size:10px; color:#64748b; margin-bottom:6px; text-transform:uppercase; letter-spacing:0.06em;">Feeding → ${sat.engine}</div>
+            ${streamsHtml}
+        </div>
+
+        <div style="font-size:10px; color:#64748b; line-height:1.5; margin-bottom:14px;">${sat.description || ''}</div>
+
+        <div style="display:flex; gap:8px;">
+            <button class="rook-panel-btn" onclick="flyToIndia(true); hideSatelliteInfoPanel();">Focus India</button>
+            <button class="rook-panel-btn" onclick="hideSatelliteInfoPanel();">Close</button>
+        </div>
+    `;
+
+    panel.style.display = 'block';
+
+    // Dismiss on outside click
+    if (satPanelDismissHandler) document.removeEventListener('click', satPanelDismissHandler);
+    satPanelDismissHandler = (e) => {
+        if (!panel.contains(e.target)) hideSatelliteInfoPanel();
+    };
+    setTimeout(() => document.addEventListener('click', satPanelDismissHandler), 200);
+}
+
+function hideSatelliteInfoPanel() {
+    const panel = document.getElementById('rook-sat-panel');
+    if (panel) panel.style.display = 'none';
+    if (satPanelDismissHandler) {
+        document.removeEventListener('click', satPanelDismissHandler);
+        satPanelDismissHandler = null;
+    }
 }
 
 function setupGlobeControls() {
     if (!globeViewer) return;
 
-    // Reset View
+    // Earth View
     document.getElementById("sat-ctrl-reset")?.addEventListener("click", () => {
+        flyToEarth(true);
+        setTimeout(() => {
+            if (globeViewer) {
+                const pov = globeViewer.pointOfView();
+                if (pov.altitude > 2.0) {
+                    startGlobeAutoRotate();
+                }
+            }
+        }, 4600);
+    });
+
+    // India View
+    document.getElementById("sat-ctrl-india")?.addEventListener("click", () => {
+        stopGlobeAutoRotate();
         flyToIndia(true);
+    });
+
+    // Andhra Pradesh View
+    document.getElementById("sat-ctrl-ap")?.addEventListener("click", () => {
+        stopGlobeAutoRotate();
+        flyToAP(true);
     });
 
     // Zoom In
     document.getElementById("sat-ctrl-zoomin")?.addEventListener("click", () => {
-        const camera = globeViewer.camera;
-        const currentAlt = camera.positionCartographic.height;
-        camera.flyTo({
-            destination: Cesium.Cartesian3.fromRadians(
-                camera.positionCartographic.longitude,
-                camera.positionCartographic.latitude,
-                currentAlt * 0.6
-            ),
-            duration: 0.8
-        });
+        const pov = globeViewer.pointOfView();
+        globeViewer.pointOfView({ ...pov, altitude: pov.altitude * 0.7 }, 800);
     });
 
     // Zoom Out
     document.getElementById("sat-ctrl-zoomout")?.addEventListener("click", () => {
-        const camera = globeViewer.camera;
-        const currentAlt = camera.positionCartographic.height;
-        camera.flyTo({
-            destination: Cesium.Cartesian3.fromRadians(
-                camera.positionCartographic.longitude,
-                camera.positionCartographic.latitude,
-                currentAlt * 1.6
-            ),
-            duration: 0.8
-        });
+        const pov = globeViewer.pointOfView();
+        globeViewer.pointOfView({ ...pov, altitude: pov.altitude * 1.5 }, 800);
     });
 
     // Auto Rotate
@@ -4155,43 +5745,50 @@ function setupGlobeControls() {
             }
         });
     });
+
+    // ── Initialize timeline HUD with today's date and current hour ──────────
+    const slider = document.getElementById("sat-timeline-range");
+    if (slider) {
+        slider.value = AppState.timeHour;
+    }
+    updateSatTimelineText();
+    refreshSatData();
 }
 
 function startGlobeAutoRotate() {
-    if (!globeViewer || globeAutoRotateListener) return;
-    globeAutoRotateListener = function() {
-        if (AppState.globeAutoRotate) {
-            globeViewer.camera.rotate(Cesium.Cartesian3.UNIT_Z, 0.001);
-        }
-    };
-    globeViewer.scene.preRender.addEventListener(globeAutoRotateListener);
+    if (!globeViewer) return;
+    globeViewer.startAutoRotate();
 }
 
 function stopGlobeAutoRotate() {
-    if (!globeViewer || !globeAutoRotateListener) return;
-    globeViewer.scene.preRender.removeEventListener(globeAutoRotateListener);
-    globeAutoRotateListener = null;
+    if (!globeViewer) return;
+    globeViewer.stopAutoRotate();
 }
 
 function syncSatClimateCards(station) {
     if (!station) return;
     
-    document.getElementById("sat-card-temp").innerText = `${station.temp.toFixed(1)}°C`;
+    document.getElementById("sat-card-temp").innerText = `${station.temp.toFixed(1)} °C`;
     document.getElementById("sat-card-rain").innerText = `${station.rain.toFixed(1)} mm`;
-    document.getElementById("sat-card-humidity").innerText = `${station.humidity}%`;
-    document.getElementById("sat-card-wind").innerText = `${station.wind} km/h`;
-    document.getElementById("sat-card-pressure").innerText = `${station.pressure} hPa`;
+    document.getElementById("sat-card-humidity").innerText = `${station.humidity.toFixed(1)}%`;
+    document.getElementById("sat-card-wind").innerText = `${station.wind.toFixed(1)} kmph`;
     
-    const lst = station.temp + 5.2;
-    document.getElementById("sat-card-lst").innerText = `${lst.toFixed(1)}°C`;
-    const sst = station.temp - 4.1;
-    document.getElementById("sat-card-sst").innerText = `${sst.toFixed(1)}°C`;
+    const windDiffEl = document.getElementById("sat-card-wind-diff");
+    if (windDiffEl) {
+        windDiffEl.innerHTML = `<i data-lucide="navigation-2" class="w-2.5 h-2.5"></i> ${station.dir || 'SW'}`;
+    }
+
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 function startSatPlayback() {
     if (satPlaybackInterval) clearInterval(satPlaybackInterval);
     const speedMap = { 1: 1500, 2: 800, 5: 300 };
     const delay = speedMap[satPlaybackSpeed] || 1500;
+    
+    AppState.playback.isPlaying = true;
     
     satPlaybackInterval = setInterval(() => {
         const slider = document.getElementById("sat-timeline-range");
@@ -4205,6 +5802,7 @@ function startSatPlayback() {
 }
 
 function pauseSatPlayback() {
+    AppState.playback.isPlaying = false;
     if (satPlaybackInterval) {
         clearInterval(satPlaybackInterval);
         satPlaybackInterval = null;
@@ -4222,13 +5820,19 @@ async function refreshSatData() {
         
         if (data.observation || data.prediction) {
             const state = data.observation || data.prediction;
-            document.getElementById("sat-card-temp").innerText = `${state.temperature.toFixed(1)}°C`;
+            document.getElementById("sat-card-temp").innerText = `${state.temperature.toFixed(1)} °C`;
             document.getElementById("sat-card-rain").innerText = `${state.rainfall.toFixed(1)} mm`;
-            document.getElementById("sat-card-humidity").innerText = `${state.humidity}%`;
-            document.getElementById("sat-card-wind").innerText = `${state.wind} km/h`;
-            document.getElementById("sat-card-pressure").innerText = `${state.pressure} hPa`;
-            document.getElementById("sat-card-lst").innerText = `${(state.lst || (state.temperature + 5.2)).toFixed(1)}°C`;
-            document.getElementById("sat-card-sst").innerText = `${(state.sst || (state.temperature - 4.1)).toFixed(1)}°C`;
+            document.getElementById("sat-card-humidity").innerText = `${state.humidity.toFixed(1)}%`;
+            document.getElementById("sat-card-wind").innerText = `${state.wind.toFixed(1)} kmph`;
+            
+            const windDiffEl = document.getElementById("sat-card-wind-diff");
+            if (windDiffEl) {
+                windDiffEl.innerHTML = `<i data-lucide="navigation-2" class="w-2.5 h-2.5"></i> ${state.wind_direction || 'SW'}`;
+            }
+
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
         }
     } catch (e) {
         console.warn('[R.O.O.K] Failed to fetch playback data for 3D globe:', e);
@@ -4237,8 +5841,8 @@ async function refreshSatData() {
 
 function updateSatTimelineText() {
     const formattedHour = String(AppState.timeHour).padStart(2, '0') + ':00 IST';
-    const months = ['JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const dateText = `${AppState.timeDay} ${months[AppState.timeMonth - 1] || 'JUN'} ${AppState.timeYear} | ${formattedHour}`;
+    const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    const dateText = `${AppState.timeDay} ${months[AppState.timeMonth - 1] || 'JUL'} ${AppState.timeYear} | ${formattedHour}`;
     const txtEl = document.getElementById("sat-pb-time-text");
     if (txtEl) txtEl.innerText = dateText;
 }
@@ -5797,6 +7401,8 @@ const CIC = (function () {
         };
     }
 })();
+
+
 // Extend your AppState to include a container for the fetched forecast data
 AppState.forecastData = [];
 
@@ -5825,11 +7431,11 @@ function renderForecastUI() {
     
     AppState.forecastData.forEach(card => {
         const cardHTML = `
-            <div class="forecast-card bg-surface p-4 rounded-lg flex flex-col items-center shadow">
+            <div class="forecast-card bg-surface p-4 rounded-lg flex flex-col items-center shadow border border-slate-800/40">
                 <span class="text-sm font-semibold opacity-80">${card.day_name}</span>
                 <span class="text-xs opacity-50 mb-2">${card.date}</span>
-                <div class="text-2xl font-bold my-1">${card.temperature}°C</div>
-                <div class="flex flex-col text-xs space-y-1 opacity-70 w-full mt-2 border-t pt-2 border-divider">
+                <div class="text-2xl font-bold my-1 text-cyan-400">${card.temperature}°C</div>
+                <div class="flex flex-col text-xs space-y-1 opacity-70 w-full mt-2 border-t pt-2 border-slate-850">
                     <div class="flex justify-between">💧 Rain: <span>${card.rainfall} mm</span></div>
                     <div class="flex justify-between">🌫️ Humid: <span>${card.humidity}%</span></div>
                     <div class="flex justify-between">💨 Wind: <span>${card.wind_speed} kt</span></div>
@@ -5841,12 +7447,11 @@ function renderForecastUI() {
 }
 
 // Hook this function inside your existing map click/station selection listener
-// Example: inside your window.updateMapData context wrapper
 const originalUpdateMapData = window.updateMapData;
 window.updateMapData = function() {
     if (typeof originalUpdateMapData === 'function') {
         originalUpdateMapData.apply(this, arguments);
     }
-    // Pull active coordinates straight out of your state configuration
     fetchSixDayForecast(AppState.selectedLat, AppState.selectedLng);
 };
+

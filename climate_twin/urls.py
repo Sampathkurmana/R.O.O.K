@@ -46,6 +46,7 @@ urlpatterns = [
     path('api/climate/comparison/', api_views.ClimateComparisonView.as_view(), name='api_climate_comparison'),
     path('api/climate/story/', api_views.ClimateStoryView.as_view(), name='api_climate_story'),
     path('api/climate/twin-status/', api_views.DigitalTwinStatusView.as_view(), name='api_climate_twin_status'),
+    path('api/climate/forecast/', api_views.SixDayForecastAPIView.as_view(), name='api_climate_forecast'),
 ]
 
 
