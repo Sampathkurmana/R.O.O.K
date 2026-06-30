@@ -568,6 +568,11 @@ function selectDistrict(station) {
     // Zoom map closer
     AppState.map.setView(station.coords, 10, { animate: true, duration: 1.5 });
 
+    if (document.getElementById("playback-panel") && !document.getElementById("playback-panel").classList.contains("hidden")) {
+        updateTimeNavigationState();
+        return;
+    }
+
     // Query real prediction for this station
     queryLocation(station.coords[0], station.coords[1]);
 }
@@ -1310,6 +1315,7 @@ async function triggerSimulation() {
                 date: `${AppState.timeYear}-${String(AppState.timeMonth).padStart(2, '0')}-${String(AppState.timeDay).padStart(2, '0')}`
             })
         });
+    
         const data = await resp.json();
 
         // 1. UPDATE TAB 1: Climate State
@@ -1439,6 +1445,7 @@ async function triggerSimulation() {
         showNotification("Simulation Complete", "Twin calculations complete. Results synced to dashboard tabs.", "success");
 
     } catch (err) {
+        console.log(err);
         console.error('[R.O.O.K] Scientific simulate API failed:', err);
         showNotification("Simulation Failed", "Communication link to backend engines broken.", "error");
     } finally {
@@ -1738,6 +1745,15 @@ function updateMapLayers(simulated = false) {
             dir: d.wind_direction,
             lst: d.lst,
             sst: d.sst,
+            aiLoaded: true,
+            aiData: {
+                tmax_c: d.temperature,
+                rainfall_mm: d.rainfall,
+                wind_speed: d.wind_speed,
+                pressure: d.pressure,
+                humidity: d.humidity,
+                source: AppState.timeMode === 'forecast' ? 'xgboost_playback' : 'playback'
+            },
             drought_risk: d.drought_risk,
             flood_risk: d.flood_risk,
             heatwave_risk: d.heatwave_risk,
@@ -2141,12 +2157,17 @@ function applyAPITooltip(marker, data, station) {
 
 // Helper to keep code clean fr
 function applyAITooltip(marker, data, station) {
+    const temp = Number(data.tmax_c ?? data.temperature ?? station.temp ?? 0);
+    const rain = Number(data.rainfall_mm ?? data.rainfall ?? station.rain ?? 0);
+    const wind = Number(data.wind_speed ?? data.wind ?? station.wind ?? 0);
+    const humidity = Number(data.humidity ?? station.humidity ?? 0);
+    const pressure = Number(data.pressure ?? station.pressure ?? 0);
     marker.setTooltipContent(`
         <div style="font-family:Inter,sans-serif;font-size:11px;padding:2px;">
             <p style="font-weight:700;color:#26C6DA;margin:0 0 4px">${station.name} <span style="color:#10b981;font-size:9px;">⚡ AI Sync</span></p>
-            <p style="margin:2px 0;color:#e2e8f0">Temp: ${data.tmax_c.toFixed(1)}°C &nbsp; Rain: ${data.rainfall_mm.toFixed(1)}mm</p>
-            <p style="margin:2px 0;color:#e2e8f0">Wind: ${data.wind_speed} kmph ${station.dir} &nbsp; Hum: ${station.humidity}%</p>
-            <p style="margin:2px 0;color:#e2e8f0">Pressure: ${station.pressure} hPa</p>
+            <p style="margin:2px 0;color:#e2e8f0">Temp: ${temp.toFixed(1)}°C &nbsp; Rain: ${rain.toFixed(1)}mm</p>
+            <p style="margin:2px 0;color:#e2e8f0">Wind: ${wind.toFixed(1)} kmph ${station.dir} &nbsp; Hum: ${humidity.toFixed(0)}%</p>
+            <p style="margin:2px 0;color:#e2e8f0">Pressure: ${pressure.toFixed(1)} hPa</p>
         </div>
     `);
 }
@@ -5775,4 +5796,57 @@ const CIC = (function () {
             }
         };
     }
-})();
+})();
+// Extend your AppState to include a container for the fetched forecast data
+AppState.forecastData = [];
+
+// Create a core function to handle the async API request
+async function fetchSixDayForecast(lat, lng) {
+    try {
+        const response = await fetch(`/api/climate/forecast/?lat=${lat}&lng=${lng}`);
+        if (!response.ok) throw new Error('Network response was not looking good.');
+        
+        const data = await response.json();
+        if (data.status === 'success') {
+            AppState.forecastData = data.forecast;
+            renderForecastUI();
+        }
+    } catch (error) {
+        console.error('❌ Failed to fetch XGBoost forecast data:', error);
+    }
+}
+
+// Dynamically generate cards inside your live weather panel container
+function renderForecastUI() {
+    const forecastContainer = document.getElementById('forecast-cards-container');
+    if (!forecastContainer) return; // Guard clause if element isn't in view
+    
+    forecastContainer.innerHTML = ''; // Clear out past elements
+    
+    AppState.forecastData.forEach(card => {
+        const cardHTML = `
+            <div class="forecast-card bg-surface p-4 rounded-lg flex flex-col items-center shadow">
+                <span class="text-sm font-semibold opacity-80">${card.day_name}</span>
+                <span class="text-xs opacity-50 mb-2">${card.date}</span>
+                <div class="text-2xl font-bold my-1">${card.temperature}°C</div>
+                <div class="flex flex-col text-xs space-y-1 opacity-70 w-full mt-2 border-t pt-2 border-divider">
+                    <div class="flex justify-between">💧 Rain: <span>${card.rainfall} mm</span></div>
+                    <div class="flex justify-between">🌫️ Humid: <span>${card.humidity}%</span></div>
+                    <div class="flex justify-between">💨 Wind: <span>${card.wind_speed} kt</span></div>
+                </div>
+            </div>
+        `;
+        forecastContainer.insertAdjacentHTML('beforeend', cardHTML);
+    });
+}
+
+// Hook this function inside your existing map click/station selection listener
+// Example: inside your window.updateMapData context wrapper
+const originalUpdateMapData = window.updateMapData;
+window.updateMapData = function() {
+    if (typeof originalUpdateMapData === 'function') {
+        originalUpdateMapData.apply(this, arguments);
+    }
+    // Pull active coordinates straight out of your state configuration
+    fetchSixDayForecast(AppState.selectedLat, AppState.selectedLng);
+};

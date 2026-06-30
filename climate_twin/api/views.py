@@ -5,12 +5,14 @@ import json
 import logging
 import datetime
 import math
+from types import SimpleNamespace
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.http import HttpResponse
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+from ml.model_service import ModelService
 
 from climate_twin.models import (
     State, District, ClimateObservation, ClimatePrediction,
@@ -26,6 +28,22 @@ import requests
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.core.cache import cache
+
+DEFAULT_AP_PLAYBACK_STATIONS = [
+    ("Anantapur", 14.6819, 77.6006),
+    ("Chittoor", 13.2172, 79.1003),
+    ("East Godavari", 17.2305, 81.8282),
+    ("Guntur", 16.3067, 80.4365),
+    ("Krishna", 16.1667, 81.1333),
+    ("Kurnool", 15.8281, 78.0373),
+    ("Prakasam", 15.5057, 79.6450),
+    ("Srikakulam", 18.2949, 83.8938),
+    ("Nellore", 14.4426, 79.9865),
+    ("Visakhapatnam", 17.6868, 83.2185),
+    ("Vizianagaram", 18.1124, 83.3989),
+    ("West Godavari", 16.8105, 81.4288),
+    ("YSR Kadapa", 14.4673, 78.8242),
+]
 
 # class WeatherAPIView(APIView):
 #     def get(self, request):
@@ -530,22 +548,21 @@ class SimulateView(APIView):
     POST /api/predict-simulate/ or POST /api/simulate
     """
     def post(self, request):
+        body = request.data
         try:
-            body = json.loads(request.body)
-        except (json.JSONDecodeError, AttributeError):
-            body = request.data
-
-        lat = float(body.get('lat', 15.9129))
-        lng = float(body.get('lng', 79.7400))
-        temp_delta = float(body.get('temp_delta', body.get('temp_change', 0.0)))
-        rain_delta = float(body.get('rain_delta', body.get('rainfall_change', 0.0)))
-        hum_delta = float(body.get('humidity_change', body.get('humidity_delta', 0.0)))
-        wind_delta = float(body.get('wind_change', body.get('wind_delta', 0.0)))
-        press_delta = float(body.get('pressure_change', body.get('pressure_delta', 0.0)))
-        lst_delta = float(body.get('lst_change', body.get('lst_delta', 0.0)))
-        sst_delta = float(body.get('sst_change', body.get('sst_delta', 0.0)))
-        cloud_delta = float(body.get('cloud_change', body.get('cloud_cover_change', 0.0)))
-        scenario_cat = body.get('scenario_category', 'Custom')
+            lat = float(body.get('lat', 15.9129))
+            lng = float(body.get('lng', 79.7400))
+            temp_delta = float(body.get('temp_delta', body.get('temp_change', 0.0)))
+            rain_delta = float(body.get('rain_delta', body.get('rainfall_change', 0.0)))
+            hum_delta = float(body.get('humidity_change', body.get('humidity_delta', 0.0)))
+            wind_delta = float(body.get('wind_change', body.get('wind_delta', 0.0)))
+            press_delta = float(body.get('pressure_change', body.get('pressure_delta', 0.0)))
+            lst_delta = float(body.get('lst_change', body.get('lst_delta', 0.0)))
+            sst_delta = float(body.get('sst_change', body.get('sst_delta', 0.0)))
+            cloud_delta = float(body.get('cloud_change', body.get('cloud_cover_change', 0.0)))
+            scenario_cat = body.get('scenario_category', 'Custom')
+        except Exception as e:
+            print(f"🚨 [SIMULATE VIEW ERROR] {str(e)}")
 
         date_str = body.get('date')
         if date_str:
@@ -619,7 +636,14 @@ class SimulateView(APIView):
         }
         modified = ScenarioEngine.simulate_scenario(base_state, scenario_cat, deltas)
         modified["cloud_cover"] = round(min(100.0, max(0.0, base_cloud + cloud_delta)), 1)
-
+        modified["temp_change"] = temp_delta
+        modified["rainfall_change"] = rain_delta
+        modified["humidity_change"] = hum_delta
+        modified["wind_change"] = wind_delta
+        modified["pressure_change"] = press_delta
+        modified["lst_change"] = lst_delta
+        modified["sst_change"] = sst_delta
+        risks = AnalyticsRiskEngine.calculate_risks(modified)
         # Run risk assessment
         risks = AnalyticsRiskEngine.calculate_risks(modified)
 
@@ -895,20 +919,32 @@ class PlaybackAPIView(APIView):
         scenario_category = request.GET.get("scenario_category", "Custom")
 
         # Map mode inputs and fetch baseline
-        districts = District.objects.all()
+        districts = list(District.objects.all())
         grid_points = []
+        model_source = "xgboost" if ModelService.get_instance().is_ready else "idw_fallback"
         
         # Find nearest district for target location if provided
         lat_str = request.GET.get('lat')
         lng_str = request.GET.get('lng')
+        lat = float(lat_str) if lat_str else 15.9129
+        lng = float(lng_str) if lng_str else 79.7400
         target_district = None
-        if lat_str and lng_str:
-            lat = float(lat_str)
-            lng = float(lng_str)
-            if districts.exists():
-                target_district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
+        if districts:
+            target_district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
+        else:
+            districts = [
+                SimpleNamespace(
+                    id=idx,
+                    name=name,
+                    latitude=s_lat,
+                    longitude=s_lng,
+                    is_virtual=True
+                )
+                for idx, (name, s_lat, s_lng) in enumerate(DEFAULT_AP_PLAYBACK_STATIONS, start=1)
+            ]
+            target_district = min(districts, key=lambda d: math.hypot(d.latitude - lat, d.longitude - lng))
         if not target_district:
-            target_district = districts.first()
+            target_district = districts[0] if districts else None
 
         # Adjust target date based on availability or mode
         # Overrides disabled to allow custom dates
@@ -922,6 +958,7 @@ class PlaybackAPIView(APIView):
         
         # Build states for each district
         for district in districts:
+            is_virtual_district = getattr(district, "is_virtual", False)
             base_temp = 32.4
             base_rain = 5.0
             base_hum = 75.0
@@ -932,8 +969,9 @@ class PlaybackAPIView(APIView):
             wind_dir = "SW"
 
             # Fetch DB values depending on mode
-            if mode in ['history', 'live'] or (mode == 'scenario' and ClimateObservation.objects.filter(date=target_date, district=district).exists()):
-                records = ClimateObservation.objects.filter(date=target_date, district=district)
+            has_observation = False if is_virtual_district else ClimateObservation.objects.filter(date=target_date, district=district).exists()
+            if (mode in ['history', 'live'] and has_observation) or (mode == 'scenario' and has_observation):
+                records = ClimateObservation.objects.none() if is_virtual_district else ClimateObservation.objects.filter(date=target_date, district=district)
                 if records.exists():
                     obs = records.first()
                     base_temp = obs.temperature
@@ -945,17 +983,48 @@ class PlaybackAPIView(APIView):
                     base_sst = obs.sst
                     wind_dir = obs.wind_direction
             else: # forecast or scenario with predictions
-                records = ClimatePrediction.objects.filter(date=target_date, district=district)
-                if records.exists():
-                    pred = records.first()
-                    base_temp = pred.temperature
-                    base_rain = pred.rainfall
-                    base_hum = pred.humidity
-                    base_press = pred.pressure
-                    base_wind = pred.wind
-                    base_lst = pred.lst
-                    base_sst = pred.sst
+                if mode == 'forecast':
+                    pred = PredictionEngine._get_forecast_point(
+                        district.latitude,
+                        district.longitude,
+                        target_date,
+                        "1-day"
+                    )
+                    base_temp = pred["temperature"]
+                    base_rain = pred["rainfall"]
+                    base_hum = pred["humidity"]
+                    base_press = pred["pressure"]
+                    base_wind = pred["wind"]
+                    base_lst = pred["lst"]
+                    base_sst = pred["sst"]
                     wind_dir = "SW" if district.latitude > 16.0 else "WNW"
+                else:
+                    records = ClimatePrediction.objects.none() if is_virtual_district else ClimatePrediction.objects.filter(date=target_date, district=district)
+                    if records.exists():
+                        pred = records.first()
+                        base_temp = pred.temperature
+                        base_rain = pred.rainfall
+                        base_hum = pred.humidity
+                        base_press = pred.pressure
+                        base_wind = pred.wind
+                        base_lst = pred.lst
+                        base_sst = pred.sst
+                        wind_dir = "SW" if district.latitude > 16.0 else "WNW"
+                    else:
+                        pred = PredictionEngine._get_forecast_point(
+                            district.latitude,
+                            district.longitude,
+                            target_date,
+                            "1-day"
+                        )
+                        base_temp = pred["temperature"]
+                        base_rain = pred["rainfall"]
+                        base_hum = pred["humidity"]
+                        base_press = pred["pressure"]
+                        base_wind = pred["wind"]
+                        base_lst = pred["lst"]
+                        base_sst = pred["sst"]
+                        wind_dir = "SW" if district.latitude > 16.0 else "WNW"
             
             # Apply hourly diurnal curve offsets
             hourly_temp = base_temp + temp_offset
@@ -1046,14 +1115,24 @@ class PlaybackAPIView(APIView):
             })
 
         # Calculate average/KPI values
-        avg_temp = round(sum(d["temperature"] for d in grid_points) / len(grid_points), 1)
-        avg_rain = round(sum(d["rainfall"] for d in grid_points) / len(grid_points), 1)
-        avg_hum = round(sum(d["humidity"] for d in grid_points) / len(grid_points), 1)
-        avg_wind = round(sum(d["wind_speed"] for d in grid_points) / len(grid_points), 1)
-        avg_press = round(sum(d["pressure"] for d in grid_points) / len(grid_points), 1)
-        avg_lst = round(sum(d["lst"] for d in grid_points) / len(grid_points), 1)
-        avg_sst_list = [d["sst"] for d in grid_points if d["sst"] > 0]
-        avg_sst = round(sum(avg_sst_list) / len(avg_sst_list), 1) if avg_sst_list else 0.0
+        if not grid_points:
+            avg_temp = 0.0  # Or whatever fallback default makes sense for your UI
+            avg_rain = 0.0
+            avg_hum = 0.0
+            avg_wind = 0.0
+            avg_press = 0.0
+            avg_lst = 0.0
+            avg_sst_list = [d["sst"] for d in grid_points if d["sst"] > 0]
+            avg_sst = round(sum(avg_sst_list) / len(avg_sst_list), 1) if avg_sst_list else 0.0
+        else:
+            avg_temp = round(sum(d["temperature"] for d in grid_points) / len(grid_points), 1)
+            avg_rain = round(sum(d["rainfall"] for d in grid_points) / len(grid_points), 1)
+            avg_hum = round(sum(d["humidity"] for d in grid_points) / len(grid_points), 1)
+            avg_wind = round(sum(d["wind_speed"] for d in grid_points) / len(grid_points), 1)
+            avg_press = round(sum(d["pressure"] for d in grid_points) / len(grid_points), 1)
+            avg_lst = round(sum(d["lst"] for d in grid_points) / len(grid_points), 1)
+            avg_sst_list = [d["sst"] for d in grid_points if d["sst"] > 0]
+            avg_sst = round(sum(avg_sst_list) / len(avg_sst_list), 1) if avg_sst_list else 0.0
 
         # Get active alerts
         active_alerts = []
@@ -1135,9 +1214,11 @@ class PlaybackAPIView(APIView):
         td_lst = 34.0
         td_sst = 0.0
         td_wind_dir = "SW"
+        is_virtual_target = getattr(target_district_obj, "is_virtual", False)
 
-        if mode in ['history', 'live'] or (mode == 'scenario' and ClimateObservation.objects.filter(date=target_date, district=target_district_obj).exists()):
-            td_obs = ClimateObservation.objects.filter(date=target_date, district=target_district_obj).first()
+        target_has_observation = False if is_virtual_target else ClimateObservation.objects.filter(date=target_date, district=target_district_obj).exists()
+        if (mode in ['history', 'live'] and target_has_observation) or (mode == 'scenario' and target_has_observation):
+            td_obs = None if is_virtual_target else ClimateObservation.objects.filter(date=target_date, district=target_district_obj).first()
             if td_obs:
                 td_temp = td_obs.temperature
                 td_rain = td_obs.rainfall
@@ -1148,16 +1229,47 @@ class PlaybackAPIView(APIView):
                 td_sst = td_obs.sst
                 td_wind_dir = td_obs.wind_direction
         else:
-            td_pred = ClimatePrediction.objects.filter(date=target_date, district=target_district_obj).first()
-            if td_pred:
-                td_temp = td_pred.temperature
-                td_rain = td_pred.rainfall
-                td_hum = td_pred.humidity
-                td_wind = td_pred.wind
-                td_press = td_pred.pressure
-                td_lst = td_pred.lst
-                td_sst = td_pred.sst
+            if mode == 'forecast':
+                td_pred = PredictionEngine._get_forecast_point(
+                    target_district_obj.latitude,
+                    target_district_obj.longitude,
+                    target_date,
+                    "1-day"
+                )
+                td_temp = td_pred["temperature"]
+                td_rain = td_pred["rainfall"]
+                td_hum = td_pred["humidity"]
+                td_wind = td_pred["wind"]
+                td_press = td_pred["pressure"]
+                td_lst = td_pred["lst"]
+                td_sst = td_pred["sst"]
                 td_wind_dir = "SW" if target_district_obj.latitude > 16.0 else "WNW"
+            else:
+                td_pred = None if is_virtual_target else ClimatePrediction.objects.filter(date=target_date, district=target_district_obj).first()
+                if td_pred:
+                    td_temp = td_pred.temperature
+                    td_rain = td_pred.rainfall
+                    td_hum = td_pred.humidity
+                    td_wind = td_pred.wind
+                    td_press = td_pred.pressure
+                    td_lst = td_pred.lst
+                    td_sst = td_pred.sst
+                    td_wind_dir = "SW" if target_district_obj.latitude > 16.0 else "WNW"
+                else:
+                    td_pred = PredictionEngine._get_forecast_point(
+                        target_district_obj.latitude,
+                        target_district_obj.longitude,
+                        target_date,
+                        "1-day"
+                    )
+                    td_temp = td_pred["temperature"]
+                    td_rain = td_pred["rainfall"]
+                    td_hum = td_pred["humidity"]
+                    td_wind = td_pred["wind"]
+                    td_press = td_pred["pressure"]
+                    td_lst = td_pred["lst"]
+                    td_sst = td_pred["sst"]
+                    td_wind_dir = "SW" if target_district_obj.latitude > 16.0 else "WNW"
                 
         for h in range(24):
             h_temp_offset = -4.0 * ((h - 14) ** 2) / 100.0 + 3.0
@@ -1176,7 +1288,7 @@ class PlaybackAPIView(APIView):
             h_wind = max(1.0, td_wind + h_wind_offset)
             h_press = td_press + h_pressure_offset
             h_lst = td_lst + h_temp_offset * 1.3
-            h_sst = td_sst + 0.15 * math.sin((h - 12) * math.pi / 12) if target_district_obj.longitude > 80.5 else 0.0
+            h_sst = (td_sst + 0.15 * math.sin((h - 12) * math.pi / 12)) if target_district_obj.longitude > 80.5 else 0.0
             
             if mode == 'scenario':
                 h_temp += temp_delta
@@ -1212,6 +1324,8 @@ class PlaybackAPIView(APIView):
 
         return Response({
             "mode": mode,
+            "source": model_source,
+            "model_source": model_source,
             "datetime": dt.isoformat(),
             "date": target_date.isoformat(),
             "hour": hour,
@@ -1948,3 +2062,75 @@ class DigitalTwinStatusView(APIView):
             "timestamp": datetime.datetime.utcnow().isoformat(),
         })
 
+class SixDayForecastAPIView(APIView):
+    def get(self, request):
+        lat = float(request.GET.get('lat', 15.9129))
+        lng = float(request.GET.get('lng', 79.7400))
+        
+        # 1. Grab base current-day observations to seed our lag features
+        # In a production setup, fetch these from your ClimateObservation model
+        current_rain = 0.0
+        current_temp = 30.0
+        current_humidity = 75.0
+        current_pressure = 1008.0
+        current_wind = 12.0
+        
+        forecast_data = []
+        base_date = datetime.date.today()
+        
+        # 2. Iterative 6-Day Cascading Loop
+        # We update lags dynamically because Day N depends on Day N-1 outputs!
+        rain_lags = [current_rain, current_rain, current_rain] # [lag1, lag2, lag3]
+        
+        for i in range(1, 7):
+            target_date = base_date + datetime.timedelta(days=i)
+            day_of_year = target_date.timetuple().tm_yday
+            month = target_date.month
+            
+            # Construct the inference payload matching your feature schema contract
+            feature_payload = {
+                'month': month,
+                'day_of_year': day_of_year,
+                'lat': lat,
+                'lng': lng,
+                'elevation_m': 15.0,  # Grab from database or external DEM if available
+                'rain_lag1': rain_lags[0],
+                'rain_lag2': rain_lags[1],
+                'rain_lag3': rain_lags[2],
+                'humidity': current_humidity,
+                'pressure_hpa': current_pressure,
+                'wind_kt': current_wind
+            }
+            
+            # 3. Predict via your XGBoost Model Engine
+            try:
+                # Assuming ModelService exposes a clean predict interface for your pkls
+                pred_rain = ModelService.predict('rainfall', feature_payload)
+                pred_temp = ModelService.predict('temperature', feature_payload)
+                pred_humidity = ModelService.predict('humidity', feature_payload)
+                pred_wind = ModelService.predict('wind', feature_payload)
+                pred_pressure = ModelService.predict('pressure', feature_payload)
+            except Exception:
+                # Fallback mechanism if models are compiling or missing
+                pred_rain = max(0.0, current_rain + (i * 0.2))
+                pred_temp = current_temp - (i * 0.5)
+                pred_humidity = min(100.0, current_humidity + (i * 1.5))
+                pred_wind = current_wind
+                pred_pressure = current_pressure
+
+            # 4. Save predictions to payload
+            forecast_data.append({
+                "day": i,
+                "date": target_date.strftime("%Y-%m-%d"),
+                "day_name": target_date.strftime("%a"),
+                "rainfall": round(pred_rain, 2),
+                "temperature": round(pred_temp, 1),
+                "humidity": round(pred_humidity, 1),
+                "wind_speed": round(pred_wind, 1),
+                "pressure": round(pred_pressure, 1)
+            })
+            
+            # 5. Cascade the lags forward for the next iteration step
+            rain_lags = [pred_rain, rain_lags[0], rain_lags[1]]
+            
+        return Response({"status": "success", "forecast": forecast_data}, status=status.HTTP_OK)

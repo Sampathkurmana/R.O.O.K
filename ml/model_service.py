@@ -16,6 +16,7 @@ import datetime
 import numpy as np
 import pandas as pd
 import joblib
+from ml.ap_feature_schema import FEATURE_DEFAULTS, AP_STATION_ELEVATIONS
 
 logger = logging.getLogger('rook.ml')
 
@@ -63,24 +64,103 @@ class ModelService:
             logger.error(f"[ModelService] Failed to load models: {e}")
             self._ready = False
 
-    def _build_features(self, lat: float, lng: float, date_val: datetime.date) -> pd.DataFrame:
+    def _nearest_elevation(self, lat: float, lng: float) -> float:
+        best_dist = float('inf')
+        best_elev = FEATURE_DEFAULTS.get('elevation_m', 200.0)
+        for _name, (s_lat, s_lng, elev) in AP_STATION_ELEVATIONS.items():
+            dist = (lat - s_lat) ** 2 + (lng - s_lng) ** 2
+            if dist < best_dist:
+                best_dist = dist
+                best_elev = float(elev)
+        return best_elev
+
+    def _model_feature_names(self, model) -> list:
+        feature_names = getattr(model, 'feature_names_in_', None)
+        if feature_names is not None:
+            return [str(name) for name in feature_names]
+
+        try:
+            booster = model.get_booster()
+            if booster and booster.feature_names:
+                return [str(name) for name in booster.feature_names]
+        except Exception:
+            pass
+
+        n_features = getattr(model, 'n_features_in_', None)
+        default_names = ['Latitude', 'Longitude', 'DayOfYear', 'Is_Ocean', 'month_sin', 'month_cos']
+        if n_features:
+            return default_names[:int(n_features)]
+        return default_names
+
+    def _build_features(
+        self,
+        lat: float,
+        lng: float,
+        date_val: datetime.date,
+        model=None,
+        base_features: dict | None = None
+    ) -> pd.DataFrame:
         day_of_year = date_val.timetuple().tm_yday
         is_ocean = 1 if lng > 83.2 else 0
         month = date_val.month
         month_sin = math.sin(2 * math.pi * month / 12)
         month_cos = math.cos(2 * math.pi * month / 12)
-        
-        row = {
+
+        values = {
             'Latitude': lat,
             'Longitude': lng,
             'DayOfYear': day_of_year,
             'Is_Ocean': is_ocean,
+            'Month': month,
+            'month': month,
+            'day_of_year': day_of_year,
+            'lat': lat,
+            'lng': lng,
+            'elevation_m': self._nearest_elevation(lat, lng),
             'month_sin': month_sin,
-            'month_cos': month_cos
+            'month_cos': month_cos,
+            **FEATURE_DEFAULTS,
         }
-        return pd.DataFrame([row])
 
-    def predict_all(self, lat: float, lng: float, date_val: datetime.date) -> dict:
+        # Computed spatial/temporal fields must win over static schema defaults.
+        values.update({
+            'Latitude': lat,
+            'Longitude': lng,
+            'DayOfYear': day_of_year,
+            'Is_Ocean': is_ocean,
+            'Month': month,
+            'month': month,
+            'day_of_year': day_of_year,
+            'lat': lat,
+            'lng': lng,
+            'elevation_m': self._nearest_elevation(lat, lng),
+            'month_sin': month_sin,
+            'month_cos': month_cos,
+        })
+
+        if base_features:
+            values.update(base_features)
+            values.update({
+                'Latitude': lat,
+                'Longitude': lng,
+                'DayOfYear': day_of_year,
+                'Is_Ocean': is_ocean,
+                'Month': month,
+                'month': month,
+                'day_of_year': day_of_year,
+                'lat': lat,
+                'lng': lng,
+                'month_sin': month_sin,
+                'month_cos': month_cos,
+            })
+
+        feature_names = self._model_feature_names(model) if model is not None else [
+            'Latitude', 'Longitude', 'DayOfYear', 'Is_Ocean', 'month_sin', 'month_cos'
+        ]
+        row = {name: values.get(name, 0.0) for name in feature_names}
+        return pd.DataFrame([row], columns=feature_names)
+
+    def predict_all(self, lat: float, lng: float, date_val: datetime.date, base_features: dict | None = None) -> dict:
         """
         Predicts all variables using loaded XGBoost models. Falls back to default values if not loaded.
         """
@@ -98,13 +178,12 @@ class ModelService:
         if not self._ready:
             return res
 
-        df_feat = self._build_features(lat, lng, date_val)
-        
         for k in res.keys():
             model_key = 'windspeed' if k == 'wind' else ('surface_pressure_hpa' if k == 'pressure' else k)
             model = self._models.get(model_key)
-            if model:
+            if model is not None:
                 try:
+                    df_feat = self._build_features(lat, lng, date_val, model, base_features)
                     pred_val = float(model.predict(df_feat)[0])
                     if k == 'rainfall':
                         pred_val = max(0.0, pred_val)

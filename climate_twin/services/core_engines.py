@@ -170,7 +170,7 @@ class PredictionEngine:
         service = ModelService.get_instance()
         
         if service.is_ready:
-            preds = service.predict_all(lat, lng, date_val)
+            preds = service.predict_all(lat, lng, date_val, base_features)
             rain = preds['rainfall']
             tmax = preds['temperature']
             humidity = preds['humidity']
