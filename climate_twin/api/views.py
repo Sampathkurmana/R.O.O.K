@@ -1167,7 +1167,7 @@ class PlaybackAPIView(APIView):
             })
 
         # Cyclone parameters
-        cyclone_active = (scenario_category == 'cyclone' and mode == 'scenario') or any(a["type"] == "Cyclone" and a["severity"] in ["High", "Critical"] for a in active_alerts)
+        cyclone_active = (scenario_category == 'cyclone' and mode == 'scenario')
         cyclone_data = {"active": False}
         if cyclone_active:
             track_points = [

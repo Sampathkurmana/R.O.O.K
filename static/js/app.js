@@ -2280,6 +2280,11 @@ function initTimeNavigation() {
 
     // Fetch today's playback data with the correct date
     updateTimeNavigationState();
+
+    // Disable calendar selectors for live mode by default
+    if (yearSelect) yearSelect.disabled = true;
+    if (monthSelect) monthSelect.disabled = true;
+    if (daySelect) daySelect.disabled = true;
 }
 
 function setupEventListeners_playback() {
@@ -2298,6 +2303,63 @@ function setupEventListeners_playback() {
                 btn.classList.add("bg-cyan-500", "text-navy-900");
                 btn.classList.remove("text-slate-400");
                 AppState.timeMode = m;
+
+                if (m === 'history') {
+                    const today = new Date();
+                    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+                    AppState.timeYear = yesterday.getFullYear();
+                    AppState.timeMonth = yesterday.getMonth() + 1;
+                    AppState.timeDay = yesterday.getDate();
+
+                    const yearSelect = document.getElementById("cal-year");
+                    const monthSelect = document.getElementById("cal-month");
+                    const daySelect = document.getElementById("cal-day");
+
+                    if (yearSelect) {
+                        yearSelect.disabled = false;
+                        yearSelect.value = AppState.timeYear;
+                    }
+                    if (monthSelect) {
+                        monthSelect.disabled = false;
+                        monthSelect.value = AppState.timeMonth;
+                    }
+                    populateCalendarDays();
+                    if (daySelect) {
+                        daySelect.disabled = false;
+                        daySelect.value = AppState.timeDay;
+                    }
+                } else if (m === 'live') {
+                    const today = new Date();
+                    AppState.timeYear = today.getFullYear();
+                    AppState.timeMonth = today.getMonth() + 1;
+                    AppState.timeDay = today.getDate();
+
+                    const yearSelect = document.getElementById("cal-year");
+                    const monthSelect = document.getElementById("cal-month");
+                    const daySelect = document.getElementById("cal-day");
+
+                    if (yearSelect) {
+                        yearSelect.disabled = true;
+                        yearSelect.value = AppState.timeYear;
+                    }
+                    if (monthSelect) {
+                        monthSelect.disabled = true;
+                        monthSelect.value = AppState.timeMonth;
+                    }
+                    populateCalendarDays();
+                    if (daySelect) {
+                        daySelect.disabled = true;
+                        daySelect.value = AppState.timeDay;
+                    }
+                } else {
+                    const yearSelect = document.getElementById("cal-year");
+                    const monthSelect = document.getElementById("cal-month");
+                    const daySelect = document.getElementById("cal-day");
+
+                    if (yearSelect) yearSelect.disabled = false;
+                    if (monthSelect) monthSelect.disabled = false;
+                    if (daySelect) daySelect.disabled = false;
+                }
 
                 if (m !== 'scenario') {
                     AppState.activeScenario = null;
