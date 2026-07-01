@@ -3709,10 +3709,14 @@ class CustomThreeGlobe {
         
         this._controls = new THREE.OrbitControls(this._camera, this._renderer.domElement);
         this._controls.enableDamping = true;
-        this._controls.dampingFactor = 0.05;
+        this._controls.dampingFactor = 0.035;   // smooth ease-in/ease-out
+        this._controls.rotateSpeed = 0.6;        // slightly slower rotation feels more premium
+        this._controls.zoomSpeed = 0.8;
+        this._controls.panSpeed = 0.5;
+        this._controls.screenSpacePanning = false;
         this._controls.minDistance = 102;
-        this._controls.maxDistance = 2500;  // Allow zooming way out to see full solar system
-        this._controls.target.set(-190, 9, 0); // Start looking between Sun and Earth
+        this._controls.maxDistance = 2500;       // Allow zooming way out to see full solar system
+        this._controls.target.set(-190, 9, 0);   // Start looking between Sun and Earth
         
         // Add default lights to the custom scene (to be traverse-configured in initCesiumGlobe)
         const defaultAmbient = new THREE.AmbientLight(0xffffff, 0.2);
@@ -3779,9 +3783,8 @@ class CustomThreeGlobe {
                 void main() {
                     vec4 dayColor = texture2D(dayTexture, vUv);
                     vec4 nightColor = texture2D(nightTexture, vUv);
-                    // Robust relative channel ocean detection on the day texture:
-                    // 1. Blue channel must be at least 0.05 greater than the Red channel
-                    // 2. Blue channel must be at least 0.02 greater than the Green channel
+                    
+                    // Ocean detection
                     float isOcean = step(dayColor.r + 0.05, dayColor.b) * step(dayColor.g + 0.02, dayColor.b);
                     
                     vec3 lightDir = normalize(sunPosition);
@@ -3789,37 +3792,38 @@ class CustomThreeGlobe {
                     
                     float dotNL = dot(normal, lightDir);
                     
-                    // Sharper transition for daylight highlight so the night side is dark and the day side is bright
-                    float dayIntensity = smoothstep(0.0, 0.45, dotNL);
+                    // Smooth twilight transition zone
+                    float dayIntensity = smoothstep(-0.08, 0.35, dotNL);
                     
-                    // 1. Base night color:
-                    // Keep the city lights (yellow/orange)
-                    vec3 lights = nightColor.rgb * 3.5;
+                    // Twilight Sunset/Sunrise Glow
+                    float twilight = smoothstep(-0.12, 0.06, dotNL) * smoothstep(0.12, -0.06, dotNL);
+                    vec3 twilightColor = vec3(0.95, 0.38, 0.15) * twilight * 0.5;
                     
-                    // Night side background:
-                    // Land gets a very subtle dark shade (4% of day texture)
-                    // Ocean gets a beautiful dark blueish/navy color (vec3(0.008, 0.015, 0.05))
-                    vec3 nightBase = mix(dayColor.rgb * 0.04, vec3(0.008, 0.015, 0.05), isOcean);
+                    // Base night: city lights + dark background (land vs ocean)
+                    vec3 lights = nightColor.rgb * 4.0;
+                    vec3 nightBase = mix(dayColor.rgb * 0.035, vec3(0.005, 0.012, 0.045), isOcean);
                     vec3 nightColorDynamic = lights + nightBase;
                     
-                    // 2. Day side highlight:
-                    // Keep the full day color (including the blue oceans and green landmasses)
-                    // with a bright, sunlit intensity of 1.1 so it "shines like sunlight falling out"
-                    vec3 dayHighlight = dayColor.rgb * 1.1 * dayIntensity;
+                    // Day side highlight
+                    vec3 dayHighlight = dayColor.rgb * 1.15 * dayIntensity;
                     
-                    // Combine them
-                    vec3 finalColor = nightColorDynamic + dayHighlight;
+                    // Base color combination
+                    vec3 finalColor = nightColorDynamic + dayHighlight + twilightColor;
                     
-                    // Fade out city lights on the brightest day parts for realism
-                    finalColor = mix(finalColor, finalColor * 0.2 + dayHighlight, smoothstep(0.3, 0.7, dotNL));
+                    // Fade out city lights on day side
+                    finalColor = mix(finalColor, finalColor * 0.15 + dayHighlight, smoothstep(0.2, 0.6, dotNL));
                     
-                    // Subtle atmosphere rim glow (warm white/light-orange, matching user's image)
+                    // Atmospheric scattering rim glow
                     vec3 viewDir = normalize(cameraPosition - vWorldPosition);
                     float rim = 1.0 - max(dot(viewDir, normal), 0.0);
-                    rim = pow(rim, 4.0);
-                    vec3 rimColor = vec3(1.0, 0.95, 0.85) * rim * 0.12;
+                    float rimPower = pow(rim, 4.0);
                     
-                    gl_FragColor = vec4(finalColor + rimColor, 1.0);
+                    // Rayleigh blue scattering on day side, sunset orange on twilight, dark on night
+                    vec3 dayRim = vec3(0.22, 0.58, 1.0) * rimPower * 0.65 * smoothstep(-0.15, 0.3, dotNL);
+                    vec3 twilightRim = vec3(1.0, 0.42, 0.12) * rimPower * 0.55 * twilight;
+                    vec3 finalRim = dayRim + twilightRim;
+                    
+                    gl_FragColor = vec4(finalColor + finalRim, 1.0);
                 }
             `
         });
@@ -3878,9 +3882,12 @@ class CustomThreeGlobe {
         const animate = () => {
             requestAnimationFrame(animate);
             
-            // Auto rotate earth
+            // Auto rotate camera around earth instead of rotating earth mesh to prevent physics/time de-sync
             if (this._isAutoRotating && (!window.AppState || !AppState.playback.isPlaying)) {
-                this.earthGroup.rotation.y += 0.0015;
+                this._controls.autoRotate = true;
+                this._controls.autoRotateSpeed = 0.55; // gentle orbit
+            } else {
+                this._controls.autoRotate = false;
             }
             
             this._controls.update();
@@ -4199,30 +4206,82 @@ class CustomThreeGlobe {
             this._mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
             this._mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
             
+            // Reset hover states by default
+            window.isHoveringMercury = false;
+            window.isHoveringVenus = false;
+            window.isHoveringEarth = false;
+            window.isHoveringIndia = false;
+
             this._raycaster.setFromCamera(this._mouse, this._camera);
+            
+            // 1. Raycast Mercury
+            if (typeof mercuryMesh !== 'undefined' && mercuryMesh) {
+                const mercInt = this._raycaster.intersectObject(mercuryMesh);
+                if (mercInt.length > 0) {
+                    window.isHoveringMercury = true;
+                }
+            }
+
+            // 2. Raycast Venus
+            if (typeof venusMesh !== 'undefined' && venusMesh) {
+                const venInt = this._raycaster.intersectObject(venusMesh);
+                if (venInt.length > 0) {
+                    window.isHoveringVenus = true;
+                }
+            }
+
+            // 3. Raycast Earth
             const intersects = this._raycaster.intersectObject(this.earthMesh);
             if (intersects.length > 0) {
                 const hitPoint = intersects[0].point;
-                const { lat, lng } = cartesianToLatLng(hitPoint);
+                // Subtract Earth group position to get coordinates relative to Earth center
+                const localHit = hitPoint.clone().sub(this.earthGroup.position);
+                const { lat, lng } = cartesianToLatLng(localHit);
+                
+                // Detect India boundary box: lat 6 to 38, lng 68 to 98
+                if (lat >= 6.0 && lat <= 38.0 && lng >= 68.0 && lng <= 98.0) {
+                    window.isHoveringIndia = true;
+                } else {
+                    window.isHoveringEarth = true;
+                }
                 
                 const closest = getClosestStation(lat, lng);
-                if (!closest) { tooltipDiv.style.display = 'none'; return; }
-                const distanceThreshold = 4.0; // degrees squared
-                const d = Math.pow(closest.coords[0] - lat, 2) + Math.pow(closest.coords[1] - lng, 2);
-                
-                if (d < distanceThreshold) {
-                    tooltipDiv.style.display = 'block';
-                    tooltipDiv.style.left = (event.clientX + 15) + 'px';
-                    tooltipDiv.style.top = (event.clientY + 15) + 'px';
-                    tooltipDiv.innerHTML = `<b>${closest.name}</b>`;
-                    return;
+                if (closest) {
+                    const distanceThreshold = 4.0; // degrees squared
+                    const d = Math.pow(closest.coords[0] - lat, 2) + Math.pow(closest.coords[1] - lng, 2);
+                    if (d < distanceThreshold) {
+                        tooltipDiv.style.display = 'block';
+                        tooltipDiv.style.left = (event.clientX + 15) + 'px';
+                        tooltipDiv.style.top = (event.clientY + 15) + 'px';
+                        tooltipDiv.innerHTML = `<b>${closest.name}</b>`;
+                        return;
+                    }
                 }
             }
+            tooltipDiv.style.display = 'none';
+        };
+
+        const onCanvasMouseLeave = () => {
+            window.isHoveringMercury = false;
+            window.isHoveringVenus = false;
+            window.isHoveringEarth = false;
+            window.isHoveringIndia = false;
             tooltipDiv.style.display = 'none';
         };
         
         this._renderer.domElement.addEventListener('click', onCanvasClick);
         this._renderer.domElement.addEventListener('mousemove', onCanvasMouseMove);
+        this._renderer.domElement.addEventListener('mouseleave', onCanvasMouseLeave);
+
+        window.lastSatInteractionTime = Date.now();
+        this._controls.addEventListener('start', () => {
+            window.lastSatInteractionTime = Date.now();
+        });
+        this._controls.addEventListener('change', () => {
+            if (this._controls.state !== -1) {
+                window.lastSatInteractionTime = Date.now();
+            }
+        });
     }
 }
 
@@ -4366,9 +4425,66 @@ function initCesiumGlobe() {
         earthOrbitGlowRing.rotation.x = Math.PI / 2;
         globeViewer.scene().add(earthOrbitGlowRing);
 
+        // Reset distance arrays
+        distanceLines = [];
+        distanceLabels = [];
+
+        // Add Mercury (Planet 1)
+        mercuryMesh = createMercuryMesh();
+        if (mercuryMesh) globeViewer.scene().add(mercuryMesh);
+
+        // Mercury's Orbit Ring
+        const mercuryOrbitGeo = new THREE.RingGeometry(179, 181, 128);
+        const mercuryOrbitMat = new THREE.MeshBasicMaterial({
+            color: 0x888888,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.15,
+            blending: THREE.AdditiveBlending
+        });
+        mercuryOrbitRing = new THREE.Mesh(mercuryOrbitGeo, mercuryOrbitMat);
+        mercuryOrbitRing.rotation.x = Math.PI / 2;
+        globeViewer.scene().add(mercuryOrbitRing);
+
+        // Add Venus (Planet 2)
+        venusMesh = createVenusMesh();
+        if (venusMesh) globeViewer.scene().add(venusMesh);
+
+        // Venus's Orbit Ring
+        const venusOrbitGeo = new THREE.RingGeometry(279, 281, 128);
+        const venusOrbitMat = new THREE.MeshBasicMaterial({
+            color: 0xe5c57b,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.2,
+            blending: THREE.AdditiveBlending
+        });
+        venusOrbitRing = new THREE.Mesh(venusOrbitGeo, venusOrbitMat);
+        venusOrbitRing.rotation.x = Math.PI / 2;
+        globeViewer.scene().add(venusOrbitRing);
+
         // Add Moon
         moonMesh = createMoonMesh();
         if (moonMesh) globeViewer.scene().add(moonMesh);
+
+        // Distance Line: Sun ── Earth (single line, real astronomical distance)
+        const distLineMat = new THREE.LineBasicMaterial({
+            color: 0xffdd55,
+            transparent: true,
+            opacity: 0.45,
+            blending: THREE.AdditiveBlending
+        });
+        const lineSE = new THREE.Line(new THREE.BufferGeometry(), distLineMat);
+        globeViewer.scene().add(lineSE);
+        distanceLines.push(lineSE);
+
+        // Distance Sprite Label — text will be updated every frame in the RAF loop
+        const lblSE = createDistanceLabelSprite("149.6M km");
+        if (lblSE) {
+            lblSE.userData.isSunEarthLabel = true;
+            globeViewer.scene().add(lblSE);
+            distanceLabels.push(lblSE);
+        }
 
         // Add Starfield Point Cloud
         starfieldPoints = createStarfield();
@@ -4427,8 +4543,10 @@ function initCesiumGlobe() {
             return { ...def, mesh: group, orbitRing, glowRing, beamLine };
         });
 
-        // Start requestAnimationFrame loop
         startSpaceSceneAnimation();
+        
+        // Play Solar System Intro
+        playSolarSystemIntro();
     }
 
     // Set up auto-rotation resume after user interaction (5-6 seconds)
@@ -4626,6 +4744,12 @@ let moonAngle = Math.PI / 4;
 let sunSprite = null;
 let sunLight = null;
 let moonMesh = null;
+let mercuryMesh = null;
+let venusMesh = null;
+let mercuryOrbitRing = null;
+let venusOrbitRing = null;
+let distanceLines = [];
+let distanceLabels = [];
 let starfieldPoints = null;
 let sceneSatellites = [];   // Three.js satellite meshes orbiting Earth in scene space
 
@@ -4789,6 +4913,80 @@ function createSatelliteThreeObject(labelText, colorHexStr) {
     };
 
     return group;
+}
+
+function createMercuryTexture() {
+    const THREE = window.THREE;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+
+    // Mercury's surface is dark gray rocky
+    ctx.fillStyle = '#65656a';
+    ctx.fillRect(0, 0, 512, 256);
+
+    // Draw crater patterns (circles with dark fills and bright rims)
+    for (let i = 0; i < 350; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 256;
+        const r = 1.0 + Math.random() * 7.5;
+
+        // Dark crater floor
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.42)';
+        ctx.fill();
+
+        // White rim highlight
+        ctx.beginPath();
+        ctx.arc(x - r * 0.12, y - r * 0.12, r * 0.9, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+        ctx.fill();
+    }
+    return new THREE.CanvasTexture(canvas);
+}
+
+function createVenusTexture() {
+    const THREE = window.THREE;
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+
+    // Venus has a thick yellow-white/orange-cream base
+    ctx.fillStyle = '#e5c57b';
+    ctx.fillRect(0, 0, 512, 256);
+
+    // Draw cloud bands (blurry horizontal rectangles)
+    for (let i = 0; i < 40; i++) {
+        const y = Math.random() * 256;
+        const h = 8 + Math.random() * 32;
+        const grad = ctx.createLinearGradient(0, y, 0, y + h);
+        grad.addColorStop(0, 'rgba(255, 245, 210, 0.05)');
+        grad.addColorStop(0.5, 'rgba(238, 192, 102, 0.28)');
+        grad.addColorStop(1.0, 'rgba(172, 128, 55, 0.12)');
+        
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, y, 512, h);
+    }
+
+    // Add swirling atmospheric storm details
+    for (let i = 0; i < 12; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 256;
+        const r = 24 + Math.random() * 48;
+        const grad = ctx.createRadialGradient(x, y, 0, x, y, r);
+        grad.addColorStop(0, 'rgba(255, 252, 225, 0.4)');
+        grad.addColorStop(0.6, 'rgba(240, 202, 120, 0.18)');
+        grad.addColorStop(1.0, 'rgba(0,0,0,0)');
+        
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    return new THREE.CanvasTexture(canvas);
 }
 
 function createMoonTexture() {
@@ -5017,6 +5215,106 @@ function createSunSprite() {
     return sunSprite;
 }
 
+function createMercuryMesh() {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+    const mercuryGeo = new THREE.SphereGeometry(12, 32, 32);
+    const mercuryMat = new THREE.MeshStandardMaterial({
+        map: createMercuryTexture(),
+        roughness: 0.9,
+        metalness: 0.1
+    });
+    return new THREE.Mesh(mercuryGeo, mercuryMat);
+}
+
+function createVenusMesh() {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+    const venusGeo = new THREE.SphereGeometry(35, 32, 32);
+    const venusMat = new THREE.MeshStandardMaterial({
+        map: createVenusTexture(),
+        roughness: 0.45,
+        metalness: 0.1,
+        emissive: new THREE.Color(0x352810),
+        emissiveIntensity: 0.25
+    });
+    return new THREE.Mesh(venusGeo, venusMat);
+}
+
+function createDistanceLabelSprite(text) {
+    const THREE = window.THREE;
+    if (!THREE) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+
+    ctx.fillStyle = 'rgba(6, 12, 24, 0.85)';
+    ctx.strokeStyle = 'rgba(255, 221, 85, 0.65)'; // Golden border
+    ctx.lineWidth = 2.5;
+
+    const lx = 4, ly = 4, lw = 248, lh = 56, lr = 8;
+    ctx.beginPath();
+    ctx.moveTo(lx+lr, ly);
+    ctx.arcTo(lx+lw, ly, lx+lw, ly+lh, lr);
+    ctx.arcTo(lx+lw, ly+lh, lx, ly+lh, lr);
+    ctx.arcTo(lx, ly+lh, lx, ly, lr);
+    ctx.arcTo(lx, ly, lx+lw, ly, lr);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 15px Inter, sans-serif';
+    ctx.fillStyle = '#ffdd55'; // Golden text
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 128, 32);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: texture, transparent: true, blending: THREE.AdditiveBlending });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(38, 9.5, 1);
+
+    // Cache properties for high-performance dynamic text updates
+    sprite.userData.canvas = canvas;
+    sprite.userData.ctx = ctx;
+    sprite.userData.texture = texture;
+
+    return sprite;
+}
+
+function updateDistanceLabelSprite(sprite, text) {
+    const ctx = sprite?.userData?.ctx;
+    const canvas = sprite?.userData?.canvas;
+    const texture = sprite?.userData?.texture;
+    if (!ctx || !canvas || !texture) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    ctx.fillStyle = 'rgba(6, 12, 24, 0.85)';
+    ctx.strokeStyle = 'rgba(255, 221, 85, 0.65)'; // Golden border
+    ctx.lineWidth = 2.5;
+
+    const lx = 4, ly = 4, lw = 248, lh = 56, lr = 8;
+    ctx.beginPath();
+    ctx.moveTo(lx+lr, ly);
+    ctx.arcTo(lx+lw, ly, lx+lw, ly+lh, lr);
+    ctx.arcTo(lx+lw, ly+lh, lx, ly+lh, lr);
+    ctx.arcTo(lx, ly+lh, lx, ly, lr);
+    ctx.arcTo(lx, ly, lx+lw, ly, lr);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 15px Inter, sans-serif';
+    ctx.fillStyle = '#ffdd55'; // Golden text
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, 128, 32);
+
+    texture.needsUpdate = true;
+}
+
 function createStarfield() {
     const THREE = window.THREE;
     if (!THREE) return null;
@@ -5061,215 +5359,506 @@ function createStarfield() {
     return new THREE.Points(starsGeometry, starsMaterial);
 }
 
+function getDayOfYear(year, month, day) {
+    const date = new Date(year, month - 1, day);
+    const start = new Date(year, 0, 0);
+    const diff = date - start;
+    const oneDay = 1000 * 60 * 60 * 24;
+    return Math.floor(diff / oneDay);
+}
+
 function startSpaceSceneAnimation() {
     if (spaceAnimationId) return; // already running
 
     const THREE = window.THREE;
     if (!THREE) return;
 
-    // Set camera far plane here as well to guarantee celestial objects aren't clipped
+    // Set camera far plane to guarantee celestial objects aren't clipped
     if (globeViewer && globeViewer.camera()) {
         globeViewer.camera().far = 10000;
         globeViewer.camera().updateProjectionMatrix();
     }
 
+    // ── PRE-CACHE expensive lookups (done ONCE, not every frame) ────────────
+    const container = document.getElementById("satellite-globe-container");
+
+    // Cache DirectionalLight — avoid traverse() every frame
+    let cachedDirLight = null;
+    if (globeViewer) {
+        globeViewer.scene().traverse(child => {
+            if (child.type === 'DirectionalLight') cachedDirLight = child;
+        });
+    }
+
+    // Pre-allocate reusable vectors to avoid GC pressure
+    const _ptSun   = new THREE.Vector3(0, 0, 0);
+    const _ptMerc  = new THREE.Vector3();
+    const _ptVenus = new THREE.Vector3();
+    const _ptEarth = new THREE.Vector3();
+    const _earthVec = new THREE.Vector3();
+    const _tempV    = new THREE.Vector3();
+
+    // Playback state driven entirely inside RAF — no setInterval conflict
+    let rafLastTime = performance.now();
+    let rafLastHourRefreshed = -1;
+
+    // ── ANIMATION LOOP ───────────────────────────────────────────────────────
     const animate = () => {
         spaceAnimationId = requestAnimationFrame(animate);
 
-        // Only animate if the container is visible
-        const container = document.getElementById("satellite-globe-container");
-        if (!container || container.classList.contains("hidden")) {
-            return;
+        // Early exit when hidden (avoids all GPU work)
+        if (!container || container.classList.contains("hidden")) return;
+
+        // ── Delta time ────────────────────────────────────────────────────
+        const nowMs = performance.now();
+        const dtMs  = Math.min(nowMs - rafLastTime, 50); // cap at 50ms to avoid spiral on tab switch
+        rafLastTime = nowMs;
+
+        // ── Playback time advancement (RAF-driven, no setInterval) ────────
+        if (AppState.playback.isPlaying && AppState.timeMode !== 'live') {
+            // 1x = 1 simulated hour per 4 real seconds = 0.25 hours/sec
+            const hoursPerMs = (satPlaybackSpeed * 0.25) / 1000.0;
+            AppState.timeHour += hoursPerMs * dtMs;
+
+            if (AppState.timeHour >= 24) {
+                AppState.timeHour = 0;
+                const d = new Date(AppState.timeYear, AppState.timeMonth - 1, AppState.timeDay + 1);
+                AppState.timeYear  = d.getFullYear();
+                AppState.timeMonth = d.getMonth() + 1;
+                AppState.timeDay   = d.getDate();
+                rafLastHourRefreshed = -1; // force refresh at midnight
+            }
+
+            // Update slider and HUD text (cheap DOM, throttled)
+            const slider = document.getElementById("sat-timeline-range");
+            if (slider) slider.value = AppState.timeHour;
+            updateSatTimelineText();
+
+            // API call only at each hour boundary
+            const hourInt = Math.floor(AppState.timeHour);
+            if (hourInt !== rafLastHourRefreshed) {
+                rafLastHourRefreshed = hourInt;
+                refreshSatData();
+            }
         }
 
+        // ── spaceTick for oscillations ────────────────────────────────────
         spaceTick += 0.0015;
 
-        // 1. Rotate Starfield slowly
+        // ── 1. Starfield slow rotation ────────────────────────────────────
         if (starfieldPoints) {
             starfieldPoints.rotation.y = spaceTick * 0.015;
             starfieldPoints.rotation.x = spaceTick * 0.008;
         }
 
-        // 2. Earth orbits the Sun (Sun is fixed at 0,0,0; Earth moves) and self-rotates
-        if (AppState.playback.isPlaying) {
-            earthOrbitAngle += 0.000375 * AppState.playback.speed;
+        // ── 2. timeRatio — fraction of day (IST-synced in live mode) ─────
+        let timeRatio;
+        if (AppState.timeMode === 'live') {
+            const istMs   = Date.now() + (330 * 60 * 1000); // UTC+5:30
+            const istDate = new Date(istMs);
+            const sec = istDate.getUTCHours() * 3600 + istDate.getUTCMinutes() * 60
+                      + istDate.getUTCSeconds() + istDate.getUTCMilliseconds() / 1000;
+            timeRatio = sec / 86400.0;
+        } else if (AppState.timeMode === 'forecast') {
+            timeRatio = 0.5; // noon
+        } else {
+            timeRatio = AppState.timeHour / 24.0;
         }
-        if (globeViewer && globeViewer.earthGroup) {
-            const hourRatio = AppState.timeHour / 24.0;
-            // Lock Earth Y-rotation based on the hour. India (79° E = 1.38 rad) faces the Sun (angle -earthOrbitAngle) at 12 PM (hourRatio = 0.5)
-            globeViewer.earthGroup.rotation.y = -earthOrbitAngle - Math.PI - 1.38 + (hourRatio * 2 * Math.PI);
-        }
-        const EARTH_ORBIT_RADIUS = 380;
-        const ex = EARTH_ORBIT_RADIUS * Math.cos(earthOrbitAngle);
-        const ez = EARTH_ORBIT_RADIUS * Math.sin(earthOrbitAngle);
-        const ey = 18; // slight inclination
 
-        // Move Earth group to its orbit position around the Sun
+        // ── 3. Orbit angles ───────────────────────────────────────────────
+        // Smooth idle orbit animation only when paused
+        if (!AppState.playback.isPlaying && AppState.timeMode !== 'live') {
+            if (window.pausedOrbitOffset == null) window.pausedOrbitOffset = 0;
+            window.pausedOrbitOffset += 0.00015;
+        } else {
+            window.pausedOrbitOffset = 0;
+        }
+        const orbitOffset = window.pausedOrbitOffset || 0;
+
+        const dayOfYear   = getDayOfYear(AppState.timeYear, AppState.timeMonth, AppState.timeDay);
+        const continuousDay = dayOfYear + timeRatio;
+        earthOrbitAngle = (continuousDay / 365.25) * 2.0 * Math.PI
+                        + (Math.PI - (182 / 365.25 * 2.0 * Math.PI))
+                        + orbitOffset;
+
+        const mercuryOrbitAngle = earthOrbitAngle * 4.15;
+        const venusOrbitAngle   = earthOrbitAngle * 1.62;
+
+        // ── 4. Earth rotation — smooth alive wobble ───────────────────────
+        // aliveRotationOffset accumulates a tiny constant spin (~0.15 deg/sec)
+        // so the globe always looks alive and floating. During playback it is
+        // NOT reset to zero — it just adds a very slow visual drift on top of
+        // the IST-synced rotation, which is nearly imperceptible at 1x speed.
+        // The IST-synced formula below already drives the correct orientation.
+        if (window.aliveRotationOffset == null) window.aliveRotationOffset = 0;
+        // Only accumulate when NOT playing (when playing, timeRatio change is
+        // fast enough to look alive without extra drift)
+        if (!AppState.playback.isPlaying) {
+            window.aliveRotationOffset += (0.15 * Math.PI / 180) * (dtMs / 1000);
+        } else {
+            // During playback, timeRatio drives orientation; slowly reduce drift toward 0
+            window.aliveRotationOffset *= 0.98; // exponential decay
+        }
+
+        // ── 5. Mercury position (float + wobble) ─────────────────────────
+        if (mercuryMesh) {
+            mercuryMesh.position.set(
+                180 * Math.cos(mercuryOrbitAngle) + 0.1 * Math.cos(spaceTick * 0.25),
+                0.12 * Math.sin(spaceTick * 0.3),
+                180 * Math.sin(mercuryOrbitAngle)
+            );
+            mercuryMesh.rotation.y += 0.002 * (dtMs / 16.67);
+            mercuryMesh.rotation.z  = 0.003 * Math.sin(spaceTick * 0.15);
+        }
+
+        // ── 6. Venus position (float + drift) ────────────────────────────
+        if (venusMesh) {
+            venusMesh.position.set(
+                280 * Math.cos(venusOrbitAngle) + 0.12 * Math.cos(spaceTick * 0.18),
+                0.15 * Math.sin(spaceTick * 0.22),
+                280 * Math.sin(venusOrbitAngle)
+            );
+            venusMesh.rotation.y += 0.001 * (dtMs / 16.67);
+            venusMesh.rotation.z  = 0.002 * Math.cos(spaceTick * 0.12);
+        }
+
+        // ── 7. Earth position (Keplerian + float) ─────────────────────────
+        const a = 380, ecc = 0.0167;
+        const rr = (a * (1 - ecc * ecc)) / (1 + ecc * Math.cos(earthOrbitAngle));
+        const ex = rr * Math.cos(earthOrbitAngle) + 0.12 * Math.cos(spaceTick * 0.24);
+        const ey = 18 + 0.16 * Math.sin(spaceTick * 0.28);
+        const ez = rr * Math.sin(earthOrbitAngle);
+
         if (globeViewer && globeViewer.earthGroup) {
             globeViewer.earthGroup.position.set(ex, ey, ez);
+
+            // ── IST-Synced Rotation ───────────────────────────────────────────
+            // three-globe places 0°E at local +X (not +Z), so the convention offset
+            // is lon + π/2 in local angle space. To derive the correct formula:
+            //
+            //   local_angle_india = π/2 + (82.5° * π/180) = π/2 + 1.44 = 3.01 rad
+            //   Sun direction from Earth = (-cos(θ), 0, -sin(θ))
+            //   Sun angle = -θ - π/2  (in Three.js atan2(x,z) convention)
+            //
+            //   For India to face Sun at noon IST (timeRatio = 0.5):
+            //     3.01 + rotY_noon = -θ - π/2
+            //     rotY_noon = -θ - π - 1.44
+            //
+            //   General formula (adding daily rotation from midnight):
+            //     rotY = -θ - 1.44 + timeRatio * 2π   (modulo 2π)
+            //
+            // IST meridian = 82.5°E = 1.4399 rad (UTC+5:30 = 5.5h × 15°/h)
+            // At 5:30–6:00 AM IST → India begins facing Sun (sunrise / terminator)
+            // At 12:00 PM IST    → India faces Sun directly (solar noon)
+            // At 18:00–18:30 IST → India moves into shadow (sunset)
+
+            const IST_MERIDIAN_RAD = 1.4399; // 82.5°E in radians
+            // -Math.PI / 2 offset aligns the local meridian so it faces the Sun directly at solar noon (12:00 PM IST)
+            const targetRotY = -earthOrbitAngle - (Math.PI / 2) - IST_MERIDIAN_RAD
+                             + (timeRatio * 2 * Math.PI)
+                             + window.aliveRotationOffset;
+
+            globeViewer.earthGroup.rotation.y = targetRotY;
+
+            // Axial tilt 23.44° + very subtle roll wobble
+            globeViewer.earthGroup.rotation.z = (23.44 * Math.PI / 180)
+                                              + 0.0025 * Math.sin(spaceTick * 0.15);
         }
 
-        // Smoothly update OrbitControls target to follow Earth or focused satellite
+        // ── 8. Distance lines & labels (Sun ── Earth exact distance) ──────
+        _ptEarth.set(ex, ey, ez);
+
+        // Keplerian distance in million kilometers (a = 149.59787, e = 0.0167)
+        const realDistMillionKm = (149.59787 * (1 - 0.0167 * 0.0167)) / (1 + 0.0167 * Math.cos(earthOrbitAngle));
+
+        if (distanceLines[0]) {
+            distanceLines[0].geometry.setFromPoints([_ptSun, _ptEarth]);
+            distanceLines[0].geometry.attributes.position.needsUpdate = true;
+        }
+        if (distanceLabels[0]) {
+            // Position exactly halfway between Sun and Earth
+            distanceLabels[0].position.addVectors(_ptSun, _ptEarth).multiplyScalar(0.5);
+            distanceLabels[0].position.y += 12;
+
+            // Throttled texture update to prevent GPU/CPU thrashing
+            const labelText = `${realDistMillionKm.toFixed(2)}M km`;
+            if (distanceLabels[0].userData.lastText !== labelText) {
+                distanceLabels[0].userData.lastText = labelText;
+                updateDistanceLabelSprite(distanceLabels[0], labelText);
+            }
+        }
+
+        // Sync HTML sidebar element
+        const sunEarthDistEl = document.getElementById("sat-earth-sun-distance");
+        if (sunEarthDistEl) {
+            sunEarthDistEl.innerText = `${realDistMillionKm.toFixed(2)}M km`;
+        }
+
+        // Fade distance lines/labels when zoomed into Earth
+        if (globeViewer && globeViewer.camera()) {
+            const camDist   = globeViewer.camera().position.distanceTo(_ptEarth);
+            const fadeFactor = Math.max(0, Math.min(1, (camDist - 250) / 350));
+            for (let i = 0; i < distanceLines.length; i++) {
+                if (distanceLines[i] && distanceLines[i].material)
+                    distanceLines[i].material.opacity = 0.35 * fadeFactor;
+            }
+            for (let i = 0; i < distanceLabels.length; i++) {
+                if (distanceLabels[i] && distanceLabels[i].material)
+                    distanceLabels[i].material.opacity = fadeFactor;
+            }
+        }
+
+        // ── 9. OrbitControls target tracking ─────────────────────────────
         if (globeViewer && globeViewer.controls()) {
             const ctrl = globeViewer.controls();
-            let targetVec = null;
             let lerpFactor = 0.05;
 
             if (window.focusedSatelliteName) {
                 const satObj = sceneSatellites.find(s => s.label === window.focusedSatelliteName);
                 if (satObj) {
-                    targetVec = satObj.mesh.position;
-                    lerpFactor = 0.08; // tighter tracking for moving satellite
+                    ctrl.target.lerp(satObj.mesh.position, 0.08);
+                } else {
+                    _earthVec.set(ex, ey, ez);
+                    const camDist2 = globeViewer.camera().position.distanceTo(_earthVec);
+                    lerpFactor = camDist2 > 350 ? 0.001 : camDist2 > 150 ? 0.015 : 0.05;
+                    ctrl.target.lerp(_earthVec, lerpFactor);
                 }
-            }
-
-            if (!targetVec) {
-                const earthVec = new THREE.Vector3(ex, ey, ez);
-                const camToEarth = globeViewer.camera().position.distanceTo(earthVec);
-                targetVec = earthVec;
-                lerpFactor = camToEarth > 350 ? 0.001 : camToEarth > 150 ? 0.015 : 0.05;
-            }
-
-            ctrl.target.lerp(targetVec, lerpFactor);
-        }
-
-        // Directional light always points FROM Sun TO Earth
-        if (globeViewer) {
-            let dirLight = null;
-            globeViewer.scene().traverse(child => {
-                if (child.type === 'DirectionalLight') dirLight = child;
-            });
-            if (dirLight) {
-                dirLight.position.set(-ex, -ey, -ez); // Direction from Earth toward Sun
-            }
-            // Update shader sunPosition to be relative to Earth (Sun - Earth = -Earth position since Sun is at 0)
-            if (globeViewer.earthMesh && globeViewer.earthMesh.material.uniforms) {
-                // Sun direction in world space, relative to Earth's world origin
-                globeViewer.earthMesh.material.uniforms.sunPosition.value.set(-ex, -ey, -ez);
+            } else {
+                _earthVec.set(ex, ey, ez);
+                const camDist2 = globeViewer.camera().position.distanceTo(_earthVec);
+                lerpFactor = camDist2 > 350 ? 0.001 : camDist2 > 150 ? 0.015 : 0.05;
+                ctrl.target.lerp(_earthVec, lerpFactor);
             }
         }
 
-        // Sun sprite stays at origin — no movement needed
+        // ── 10. Idle cinematic camera drift ──────────────────────────────
+        if (!window.isSatelliteIntroPlaying && globeViewer && globeViewer.camera() && globeViewer.controls()) {
+            if (Date.now() - (window.lastSatInteractionTime || 0) > 5000) {
+                const cam  = globeViewer.camera();
+                const ctrl = globeViewer.controls();
+                const tx   = ctrl.target.x, tz = ctrl.target.z;
+                const ds   = 0.0003;
+                const dx   = cam.position.x - tx;
+                const dz_  = cam.position.z - tz;
+                cam.position.x = tx + dx * Math.cos(ds) - dz_ * Math.sin(ds);
+                cam.position.z = tz + dx * Math.sin(ds) + dz_ * Math.cos(ds);
+                cam.position.y += Math.sin(spaceTick * 0.1) * 0.008;
+            }
+        }
 
-        // 3. Moon orbits Earth (Moon position is relative to Earth group, so offset by Earth pos)
+        // ── 11. Sunlight — use cached DirectionalLight ────────────────────
+        if (cachedDirLight) {
+            cachedDirLight.position.set(-ex, -ey, -ez);
+        }
+        if (globeViewer && globeViewer.earthMesh &&
+            globeViewer.earthMesh.material.uniforms) {
+            globeViewer.earthMesh.material.uniforms.sunPosition.value.set(-ex, -ey, -ez);
+        }
+
+        // ── 12. Sun pulsating corona ──────────────────────────────────────
+        if (sunSprite) {
+            sunSprite.material.rotation = spaceTick * 0.04;
+            sunSprite.scale.set(200 + 4.0 * Math.sin(spaceTick * 1.8),
+                                200 + 4.0 * Math.sin(spaceTick * 1.8), 1);
+        }
+
+        // ── 13. Moon orbit ────────────────────────────────────────────────
         if (moonMesh) {
             moonAngle = spaceTick * 4.0;
-            const moonDistance = 145;
-            const mx = ex + moonDistance * Math.cos(moonAngle);
-            const mz = ez + moonDistance * Math.sin(moonAngle);
-            const my = ey + moonDistance * Math.sin(moonAngle) * 0.22;
-            moonMesh.position.set(mx, my, mz);
+            const mDist = 145;
+            moonMesh.position.set(
+                ex + mDist * Math.cos(moonAngle),
+                ey + mDist * Math.sin(moonAngle) * 0.22,
+                ez + mDist * Math.sin(moonAngle)
+            );
             moonMesh.rotation.y = spaceTick * 0.4;
         }
 
-        // 4. (reserved — scene-space satellites handled in section 7 below)
-
-        // 6. Update Live AI Fusion Stream Log in UI
+        // ── 14. Live AI Fusion log (throttled to every 2 seconds) ────────
         if (Date.now() - lastLogTime > 2000) {
             lastLogTime = Date.now();
             const logContainer = document.getElementById('sat-ai-stream-log');
             if (logContainer) {
                 const messages = [
-                    { tag: 'INSAT-3DR', text: 'Streaming weather & cloud cover data...', color: 'text-cyan-400 font-bold' },
-                    { tag: 'Atmosphere Engine', text: 'Fusing temperature & humidity profiles...', color: 'text-slate-400' },
-                    { tag: 'Oceansat-3', text: 'Streaming sea surface temp & wind vectors...', color: 'text-emerald-400 font-bold' },
-                    { tag: 'Ocean Engine', text: 'Analyzing cyclone formation indicators...', color: 'text-slate-400' },
-                    { tag: 'Resourcesat-2A', text: 'Streaming land vegetation NDVI indices...', color: 'text-orange-400 font-bold' },
-                    { tag: 'Land Engine', text: 'Assessing soil moisture & drought risk...', color: 'text-slate-400' },
-                    { tag: 'ROOK AI Fusion', text: 'Fusing multi-spectral orbital observations...', color: 'text-cyan-300 font-bold' },
-                    { tag: 'ROOK AI Fusion', text: 'Digital Twin Synchronized & Updated.', color: 'text-emerald-300 font-bold' }
+                    { tag: 'INSAT-3DR',        text: 'Streaming weather & cloud cover data...',       color: 'text-cyan-400 font-bold' },
+                    { tag: 'Atmosphere Engine', text: 'Fusing temperature & humidity profiles...',     color: 'text-slate-400' },
+                    { tag: 'Oceansat-3',        text: 'Streaming sea surface temp & wind vectors...',  color: 'text-emerald-400 font-bold' },
+                    { tag: 'Ocean Engine',      text: 'Analyzing cyclone formation indicators...',     color: 'text-slate-400' },
+                    { tag: 'Resourcesat-2A',    text: 'Streaming land vegetation NDVI indices...',     color: 'text-orange-400 font-bold' },
+                    { tag: 'Land Engine',       text: 'Assessing soil moisture & drought risk...',     color: 'text-slate-400' },
+                    { tag: 'ROOK AI Fusion',    text: 'Fusing multi-spectral orbital observations...', color: 'text-cyan-300 font-bold' },
+                    { tag: 'ROOK AI Fusion',    text: 'Digital Twin Synchronized & Updated.',          color: 'text-emerald-300 font-bold' },
                 ];
-                const msg = messages[logIndex % messages.length];
-                logIndex++;
-                
+                const msg = messages[logIndex++ % messages.length];
                 const timeStr = new Date().toTimeString().split(' ')[0];
                 const logLine = document.createElement('div');
                 logLine.className = 'text-[9.5px] border-b border-white/5 pb-0.5';
                 logLine.innerHTML = `<span class="text-slate-500">[${timeStr}]</span> <span class="${msg.color}">[${msg.tag}]</span> <span class="text-slate-300">${msg.text}</span>`;
                 logContainer.appendChild(logLine);
                 logContainer.scrollTop = logContainer.scrollHeight;
-                
-                while (logContainer.children.length > 20) {
-                    logContainer.removeChild(logContainer.firstChild);
-                }
+                while (logContainer.children.length > 20) logContainer.removeChild(logContainer.firstChild);
             }
         }
-        // 7. Update scene-space satellite positions (orbit around Earth's current world position)
+
+        // ── 15. Scene-space satellites orbiting Earth ─────────────────────
         if (sceneSatellites.length > 0) {
-            const THREE = window.THREE;
-            const earthCenter = new THREE.Vector3(ex, ey, ez);
-
+            const earthCenter = _ptEarth; // already set above
             sceneSatellites.forEach(sat => {
-                const angle = spaceTick * sat.speed + sat.phase;
-
-                // ── Orbital mechanics: inclined elliptical orbit ──────────────
-                // Build a local orbit basis:
-                //   basisX = orbit 'right' (cosine direction)
-                //   basisY = orbit 'up' (inclined by sat.incline from world Y)
-                //   basisZ = perpendicular
-                const cosInc = Math.cos(sat.incline);
-                const sinInc = Math.sin(sat.incline);
-
-                // The orbital plane normal for this satellite:
-                // INSAT-3DR: almost equatorial (incline≈0) → flat ring
-                // Oceansat-3: polar (incline≈π/2) → vertical ring
-                // Resourcesat-2A: sun-sync (incline≈0.95) → tilted ring
-                const localX = sat.radius * Math.cos(angle);
-                const localY = sat.radius * Math.sin(angle) * sinInc;
-                const localZ = sat.radius * Math.sin(angle) * cosInc;
+                const angle   = spaceTick * sat.speed + sat.phase;
+                const cosInc  = Math.cos(sat.incline);
+                const sinInc  = Math.sin(sat.incline);
+                const localX  = sat.radius * Math.cos(angle);
+                const localY  = sat.radius * Math.sin(angle) * sinInc;
+                const localZ  = sat.radius * Math.sin(angle) * cosInc;
 
                 sat.mesh.position.set(ex + localX, ey + localY, ez + localZ);
+                sat.mesh.lookAt(earthCenter);
 
-                // Face toward Earth center
-                if (THREE) sat.mesh.lookAt(earthCenter);
-
-                // ── Update orbit ring position + plane to match Earth ─────────
                 if (sat.orbitRing) {
                     sat.orbitRing.position.copy(earthCenter);
                     sat.glowRing.position.copy(earthCenter);
-
-                    // Tilt ring to match orbital plane:
-                    // For incline=0 → flat (X-Z plane) → rotate X by π/2
-                    // For incline=π/2 → vertical → no X rotation
-                    // We use Euler: first rotate X by -π/2 to lay flat, then tilt by incline
                     sat.orbitRing.rotation.set(-Math.PI / 2 + sat.incline, 0, 0);
                     sat.glowRing.rotation.set(-Math.PI / 2 + sat.incline, 0, 0);
-
-                    // Pulse orbit ring opacity with satellite speed
                     const pulse = 0.45 + 0.1 * Math.sin(Date.now() / 600 + sat.phase);
                     sat.orbitRing.material.opacity = pulse;
-                    sat.glowRing.material.opacity = pulse * 0.25;
+                    sat.glowRing.material.opacity  = pulse * 0.25;
                 }
-
-                // ── Update Beam Line position to connect to India ─────────────
                 if (sat.beamLine) {
                     const localIndia = getCartesianCoords(20.5937, 78.9629, 0.0, 100);
-                    // Rotate relative point by Earth self-rotation
                     localIndia.applyAxisAngle(new THREE.Vector3(0, 1, 0), globeViewer.earthGroup.rotation.y);
-                    // Translate relative point by Earth orbit position
                     const worldIndia = localIndia.add(earthCenter);
                     sat.beamLine.geometry.setFromPoints([sat.mesh.position, worldIndia]);
                     sat.beamLine.geometry.attributes.position.needsUpdate = true;
                 }
-
-                // Spin solar panels
                 if (sat.mesh.userData.leftPanel) {
                     const pRot = (Date.now() / 2200) % (Math.PI * 2);
-                    sat.mesh.userData.leftPanel.rotation.x = pRot;
+                    sat.mesh.userData.leftPanel.rotation.x  = pRot;
                     sat.mesh.userData.rightPanel.rotation.x = pRot;
-                    if (sat.mesh.userData.leftFrame) sat.mesh.userData.leftFrame.rotation.x = pRot;
+                    if (sat.mesh.userData.leftFrame)  sat.mesh.userData.leftFrame.rotation.x  = pRot;
                     if (sat.mesh.userData.rightFrame) sat.mesh.userData.rightFrame.rotation.x = pRot;
                 }
-                // Pulse blinking light
                 if (sat.mesh.userData.blinkingLight) {
                     const t = Math.sin(Date.now() / 400 + sat.phase);
                     sat.mesh.userData.blinkingLight.material.opacity = 0.4 + 0.6 * Math.max(0, t);
                 }
             });
         }
+
+        // ── 16. Planet HTML label overlay projection ──────────────────────
+        if (globeViewer && globeViewer.camera()) {
+            const updateLabel = (mesh, elementId, maxDist, shouldShow) => {
+                const el = document.getElementById(elementId);
+                if (!el || !mesh) return;
+                mesh.getWorldPosition(_tempV);
+                const dist = globeViewer.camera().position.distanceTo(_tempV);
+                if (dist > maxDist || !shouldShow) {
+                    el.classList.add("opacity-0");
+                    el.classList.remove("opacity-100");
+                    setTimeout(() => { if (el.classList.contains("opacity-0")) el.classList.add("hidden"); }, 300);
+                } else {
+                    _tempV.project(globeViewer.camera());
+                    el.style.left = `${(_tempV.x * 0.5 + 0.5) * container.clientWidth}px`;
+                    el.style.top  = `${(_tempV.y * -0.5 + 0.5) * container.clientHeight}px`;
+                    el.classList.remove("hidden");
+                    void el.offsetWidth;
+                    el.classList.remove("opacity-0");
+                    el.classList.add("opacity-100");
+                }
+            };
+            updateLabel(mercuryMesh, "sat-label-mercury", 500, window.isHoveringMercury);
+            updateLabel(venusMesh,   "sat-label-venus",   600, window.isHoveringVenus);
+            if (globeViewer.earthMesh) {
+                updateLabel(globeViewer.earthMesh, "sat-label-earth", 750, window.isHoveringEarth);
+                updateLabel(globeViewer.earthMesh, "sat-label-india", 750, window.isHoveringIndia);
+            }
+        }
     };
 
     spaceAnimationId = requestAnimationFrame(animate);
+}
+
+
+
+
+function playSolarSystemIntro() {
+    if (!globeViewer) return;
+    
+    const hud = document.getElementById("panel-satellite");
+    const container = document.getElementById("satellite-globe-container");
+    const skipBtn = document.getElementById("sat-skip-intro-btn");
+    const note = document.getElementById("sat-scale-note");
+
+    if (hud) hud.classList.add("hidden");
+    if (note) note.classList.add("opacity-0");
+    if (skipBtn) skipBtn.classList.remove("hidden");
+
+    globeViewer.controls().enabled = false;
+    window.isSatelliteIntroPlaying = true;
+
+    const THREE = window.THREE;
+    const cam = globeViewer.camera();
+    const ctrl = globeViewer.controls();
+
+    // Get Earth's starting position
+    const getEarthPos = () => globeViewer.earthGroup ? globeViewer.earthGroup.position.clone() : new THREE.Vector3(-380, 18, 0);
+    const ep = getEarthPos();
+
+    // Initial Camera position: close up to Earth (focusing on Earth/India)
+    cam.position.set(ep.x + 65, ep.y + 48, ep.z + 128);
+    ctrl.target.copy(ep);
+    ctrl.update();
+
+    const tl = gsap.timeline({
+        onUpdate: () => {
+            ctrl.update();
+        },
+        onComplete: () => {
+            // Clean up and restore interaction
+            ctrl.enabled = true;
+            window.isSatelliteIntroPlaying = false;
+
+            if (skipBtn) skipBtn.classList.add("hidden");
+
+            // Fade in overlays
+            if (hud) {
+                hud.classList.remove("hidden");
+                gsap.fromTo(hud, { opacity: 0 }, { opacity: 1, duration: 0.8 });
+            }
+            if (note) {
+                note.classList.remove("opacity-0");
+                gsap.fromTo(note, { opacity: 0 }, { opacity: 1, duration: 0.6 });
+            }
+
+            startGlobeAutoRotate();
+        }
+    });
+
+    // Zoom out smoothly from Earth to the wide solar system view
+    tl.to(ctrl.target, {
+        x: 0,
+        y: 0,
+        z: 0,
+        duration: 4.5,
+        ease: "power2.inOut"
+    });
+
+    tl.to(cam.position, {
+        x: 200,
+        y: 350,
+        z: 1100,
+        duration: 4.5,
+        ease: "power2.inOut"
+    }, "<");
+
+    // Skip Button Event Listener
+    if (skipBtn) {
+        const newSkipBtn = skipBtn.cloneNode(true);
+        skipBtn.parentNode.replaceChild(newSkipBtn, skipBtn);
+
+        newSkipBtn.addEventListener("click", () => {
+            tl.progress(1); // Jump to the end instantly
+        });
+    }
 }
 
 let globePolygons = [];
@@ -5727,12 +6316,14 @@ function setupGlobeControls() {
     });
 
     // Timeline Slider
+    // Timeline Slider
     document.getElementById("sat-timeline-range")?.addEventListener("input", (e) => {
-        const hour = parseInt(e.target.value);
+        const hour = parseFloat(e.target.value);
         AppState.timeHour = hour;
+        window.lastSatHourUpdateTime = Date.now();
         
-        // Sync Leaflet timeline hour
-        const leafletHourEl = document.querySelector(`.timeline-hour-dot[data-hour="${hour}"]`);
+        // Sync Leaflet timeline hour (use nearest integer)
+        const leafletHourEl = document.querySelector(`.timeline-hour-dot[data-hour="${Math.round(hour)}"]`);
         if (leafletHourEl) leafletHourEl.click();
         
         updateSatTimelineText();
@@ -5750,6 +6341,106 @@ function setupGlobeControls() {
         document.getElementById("sat-pb-play").classList.remove("hidden");
         document.getElementById("sat-pb-pause").classList.add("hidden");
         pauseSatPlayback();
+    });
+
+    // Prev Day
+    document.getElementById("sat-pb-prev-day")?.addEventListener("click", () => {
+        const d = new Date(AppState.timeYear, AppState.timeMonth - 1, AppState.timeDay - 1);
+        AppState.timeYear = d.getFullYear();
+        AppState.timeMonth = d.getMonth() + 1;
+        AppState.timeDay = d.getDate();
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Next Day
+    document.getElementById("sat-pb-next-day")?.addEventListener("click", () => {
+        const d = new Date(AppState.timeYear, AppState.timeMonth - 1, AppState.timeDay + 1);
+        AppState.timeYear = d.getFullYear();
+        AppState.timeMonth = d.getMonth() + 1;
+        AppState.timeDay = d.getDate();
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Prev Hour
+    document.getElementById("sat-pb-prev-hour")?.addEventListener("click", () => {
+        let hour = Math.floor(AppState.timeHour) - 1;
+        if (hour < 0) {
+            hour = 23;
+            const d = new Date(AppState.timeYear, AppState.timeMonth - 1, AppState.timeDay - 1);
+            AppState.timeYear = d.getFullYear();
+            AppState.timeMonth = d.getMonth() + 1;
+            AppState.timeDay = d.getDate();
+        }
+        AppState.timeHour = hour;
+        const slider = document.getElementById("sat-timeline-range");
+        if (slider) slider.value = hour;
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Next Hour
+    document.getElementById("sat-pb-next-hour")?.addEventListener("click", () => {
+        let hour = Math.floor(AppState.timeHour) + 1;
+        if (hour > 23) {
+            hour = 0;
+            const d = new Date(AppState.timeYear, AppState.timeMonth - 1, AppState.timeDay + 1);
+            AppState.timeYear = d.getFullYear();
+            AppState.timeMonth = d.getMonth() + 1;
+            AppState.timeDay = d.getDate();
+        }
+        AppState.timeHour = hour;
+        const slider = document.getElementById("sat-timeline-range");
+        if (slider) slider.value = hour;
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Today
+    document.getElementById("sat-pb-today")?.addEventListener("click", () => {
+        const d = new Date();
+        AppState.timeYear = d.getFullYear();
+        AppState.timeMonth = d.getMonth() + 1;
+        AppState.timeDay = d.getDate();
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Stop
+    document.getElementById("sat-pb-stop")?.addEventListener("click", () => {
+        pauseSatPlayback();
+        document.getElementById("sat-pb-play")?.classList.remove("hidden");
+        document.getElementById("sat-pb-pause")?.classList.add("hidden");
+        AppState.timeHour = 0;
+        const slider = document.getElementById("sat-timeline-range");
+        if (slider) slider.value = 0;
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Date Picker Input
+    document.getElementById("sat-date-picker")?.addEventListener("change", (e) => {
+        if (!e.target.value) return;
+        const [y, m, d] = e.target.value.split('-').map(Number);
+        AppState.timeYear = y;
+        AppState.timeMonth = m;
+        AppState.timeDay = d;
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Month Selector
+    document.getElementById("sat-month-select")?.addEventListener("change", (e) => {
+        AppState.timeMonth = parseInt(e.target.value);
+        updateSatTimelineText();
+        refreshSatData();
+    });
+
+    // Live button
+    document.getElementById("sat-pb-live")?.addEventListener("click", () => {
+        const liveBtnTop = document.getElementById("sat-mode-live");
+        if (liveBtnTop) liveBtnTop.click();
     });
 
     // Layer switches
@@ -5788,6 +6479,22 @@ function setupGlobeControls() {
                 AppState.timeMode = mode;
                 updateTimeNavigationState();
             }
+
+            // Update bottom live button state
+            const pbLiveBtn = document.getElementById("sat-pb-live");
+            if (pbLiveBtn) {
+                const isActive = AppState.timeMode === 'live';
+                pbLiveBtn.classList.toggle("bg-cyan-500", isActive);
+                pbLiveBtn.classList.toggle("text-navy-950", isActive);
+                pbLiveBtn.classList.toggle("text-slate-400", !isActive);
+                const dot = pbLiveBtn.querySelector("span");
+                if (dot) {
+                    dot.classList.toggle("bg-navy-950", isActive);
+                    dot.classList.toggle("bg-emerald-400", isActive);
+                    dot.classList.toggle("bg-slate-500", !isActive);
+                    dot.classList.toggle("animate-pulse", isActive);
+                }
+            }
         });
     });
 
@@ -5795,26 +6502,49 @@ function setupGlobeControls() {
     document.querySelectorAll(".sat-speed-btn").forEach(btn => {
         btn.addEventListener("click", () => {
             document.querySelectorAll(".sat-speed-btn").forEach(b => {
-                b.classList.remove("bg-slate-800", "text-cyan-400");
-                b.classList.add("bg-navy-950", "text-slate-400", "hover:text-white");
+                b.classList.remove("bg-cyan-500", "text-navy-950");
+                b.classList.add("text-slate-400", "hover:text-white");
             });
-            btn.classList.add("bg-slate-800", "text-cyan-400");
-            btn.classList.remove("bg-navy-950", "text-slate-400");
+            btn.classList.add("bg-cyan-500", "text-navy-950");
+            btn.classList.remove("text-slate-400", "hover:text-white");
             
-            satPlaybackSpeed = parseInt(btn.id.replace("sat-speed-", ""));
+            const rawSpeed = btn.id.replace("sat-speed-", "");
+            // Direct lookup map for all speed buttons
+            const speedMap = { "05x": 0.5, "1x": 1, "2x": 2, "5x": 5, "10x": 10 };
+            satPlaybackSpeed = speedMap[rawSpeed] || 1;
+            
             if (satPlaybackInterval) {
                 startSatPlayback();
             }
         });
     });
 
-    // ── Initialize timeline HUD with today's date and current hour ──────────
+    // Initialize simulation clock
+    initSimulationTime();
+}
+
+function initSimulationTime() {
+    const now = new Date();
+    AppState.timeYear = now.getFullYear();
+    AppState.timeMonth = now.getMonth() + 1;
+    AppState.timeDay = now.getDate();
+    
+    // Default daily timeline to current local hour + minute fraction
+    const localHour = now.getHours() + (now.getMinutes() / 60.0);
+    AppState.timeHour = localHour;
+
     const slider = document.getElementById("sat-timeline-range");
     if (slider) {
-        slider.value = AppState.timeHour;
+        slider.value = localHour;
     }
+    
     updateSatTimelineText();
     refreshSatData();
+
+    // Trigger Lucide to render all newly added icon classes
+    if (typeof lucide !== 'undefined') {
+        lucide.createIcons();
+    }
 }
 
 function startGlobeAutoRotate() {
@@ -5846,21 +6576,21 @@ function syncSatClimateCards(station) {
 }
 
 function startSatPlayback() {
-    if (satPlaybackInterval) clearInterval(satPlaybackInterval);
-    const speedMap = { 1: 1500, 2: 800, 5: 300 };
-    const delay = speedMap[satPlaybackSpeed] || 1500;
-    
+    // Clear any old interval (legacy cleanup)
+    if (satPlaybackInterval) {
+        clearInterval(satPlaybackInterval);
+        satPlaybackInterval = null;
+    }
+
+    // Switch off Live mode when clicking play
+    if (AppState.timeMode === 'live') {
+        const histBtn = document.getElementById("sat-mode-history");
+        if (histBtn) histBtn.click();
+    }
+
+    // All time advancement is handled inside the RAF animation loop.
+    // Setting this flag is all that's needed to start playback.
     AppState.playback.isPlaying = true;
-    
-    satPlaybackInterval = setInterval(() => {
-        const slider = document.getElementById("sat-timeline-range");
-        if (slider) {
-            let nextVal = parseInt(slider.value) + 1;
-            if (nextVal > 23) nextVal = 0;
-            slider.value = nextVal;
-            slider.dispatchEvent(new Event('input'));
-        }
-    }, delay);
 }
 
 function pauseSatPlayback() {
@@ -5902,11 +6632,31 @@ async function refreshSatData() {
 }
 
 function updateSatTimelineText() {
-    const formattedHour = String(AppState.timeHour).padStart(2, '0') + ':00 IST';
+    const hours   = Math.floor(AppState.timeHour);
+    const minutes = Math.floor((AppState.timeHour % 1) * 60);
+
+    // Throttle: only update DOM when displayed minute changes (avoids 60fps layout thrash)
+    const cacheKey = `${AppState.timeYear}-${AppState.timeMonth}-${AppState.timeDay}-${hours}-${minutes}`;
+    if (updateSatTimelineText._lastKey === cacheKey) return;
+    updateSatTimelineText._lastKey = cacheKey;
+
+    const formattedTime = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0') + ' IST';
     const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    const dateText = `${AppState.timeDay} ${months[AppState.timeMonth - 1] || 'JUL'} ${AppState.timeYear} | ${formattedHour}`;
+    const dateText = `${AppState.timeDay} ${months[AppState.timeMonth - 1] || 'JUL'} ${AppState.timeYear} | ${formattedTime}`;
+
     const txtEl = document.getElementById("sat-pb-time-text");
     if (txtEl) txtEl.innerText = dateText;
+
+    // Sync date picker and month select only when date changes
+    const datePicker = document.getElementById("sat-date-picker");
+    if (datePicker) {
+        const dateStr = `${AppState.timeYear}-${String(AppState.timeMonth).padStart(2, '0')}-${String(AppState.timeDay).padStart(2, '0')}`;
+        if (datePicker.value !== dateStr) datePicker.value = dateStr;
+    }
+    const monthSelect = document.getElementById("sat-month-select");
+    if (monthSelect && parseInt(monthSelect.value) !== AppState.timeMonth) {
+        monthSelect.value = AppState.timeMonth;
+    }
 }
 
 
