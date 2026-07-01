@@ -1001,5 +1001,57 @@ select option {
     height: 100% !important;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   Satellite View UI Modules - Floating Glass, Drawers & Hover
+   ═══════════════════════════════════════════════════════════ */
 
+/* Satellite View Specific Animations & Drawers */
+.sat-module {
+    pointer-events: auto;
+    z-index: 50;
+}
 
+/* Hover Cards - overriding Tailwind's default invisible/opacity to support group-hover transitions */
+.sat-hover-card {
+    transition: opacity 0.3s ease, visibility 0.3s, transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    transform: translateY(10px) scale(0.95);
+}
+
+.sat-module:hover .sat-hover-card {
+    transform: translateY(0) scale(1);
+}
+
+/* Base Drawer animations */
+.sat-drawer {
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+/* Left sliding drawer */
+.slide-in-left {
+    transform: translateX(-120%);
+    opacity: 0;
+}
+.slide-in-left.sat-drawer-open {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+/* Right sliding drawer */
+.slide-in-right {
+    transform: translateX(120%);
+    opacity: 0;
+}
+.slide-in-right.sat-drawer-open {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+/* Up sliding drawer (for bottom modules) */
+.slide-up {
+    transform: translateY(120%);
+    opacity: 0;
+}
+.slide-up.sat-drawer-open {
+    transform: translateY(0);
+    opacity: 1;
+}

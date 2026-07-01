@@ -75,7 +75,7 @@ def feature_engineer(df: pd.DataFrame) -> pd.DataFrame:
 
 def train_generic_model(df: pd.DataFrame, target_col: str, output_dir: str, scale: bool = False, scaler=None):
     """A generic trainer for ANY target column (Wind, Temp, Pressure, etc.)"""
-    print(f'\n── Training Model for: {target_col} ──────────────────────────────')
+    print(f'\n=== Training Model for: {target_col} ===')
     
     # Drop rows where the target is missing (Crucial for SST/LST)
     clean_df = df.dropna(subset=[target_col])
@@ -128,7 +128,7 @@ def train_generic_model(df: pd.DataFrame, target_col: str, output_dir: str, scal
 
     out_path = os.path.join(output_dir, f'xgb_{target_col.lower()}.pkl')
     joblib.dump(model, out_path)
-    print(f'  ✅ Saved → {out_path}')
+    print(f'  [OK] Saved -> {out_path}')
 
     return model, scaler
 
@@ -163,10 +163,10 @@ def main():
             # We train each model iteratively
             model, global_scaler = train_generic_model(df, target, args.output, scale=args.scale, scaler=global_scaler)
         else:
-            print(f"\n⚠️ Skipping {target}: Not found in dataset columns.")
+            print(f"\n[WARN] Skipping {target}: Not found in dataset columns.")
 
     print('\n' + '='*55)
-    print('  ✅ All Training complete. Files saved to:', args.output)
+    print('  [OK] All Training complete. Files saved to:', args.output)
     print('='*55 + '\n')
 
 

@@ -1069,7 +1069,19 @@ function setupEventListeners() {
 
 // Switch Sidebar Panels
 function switchPanel(panelName) {
+    const previousPanel = AppState.activePanel;
     AppState.activePanel = panelName;
+
+    // Close satellite drawers and sync 2D map if leaving satellite view
+    if (previousPanel === 'satellite' && panelName !== 'satellite') {
+        if (typeof window.closeSatDrawers === 'function') window.closeSatDrawers();
+        if (typeof updateTimeNavigationState === 'function') {
+            setTimeout(() => {
+                updateTimeNavigationState();
+                if (AppState.map) AppState.map.invalidateSize();
+            }, 150);
+        }
+    }
 
     // Toggle nav active state
     document.querySelectorAll(".nav-item").forEach(item => {
@@ -1251,6 +1263,15 @@ function switchPanel(panelName) {
                 }
             }, 100);
         }
+    }
+
+    // Sync 2D Map and dashboard UI when leaving satellite panel
+    if (panelName !== 'satellite' && window._lastPanelWasSatellite) {
+        window._lastPanelWasSatellite = false;
+        updateTimeNavigationState();
+    }
+    if (panelName === 'satellite') {
+        window._lastPanelWasSatellite = true;
     }
 
     // Invalidate map sizes in case borders shifted
@@ -2293,16 +2314,8 @@ function setupEventListeners_playback() {
         const btn = document.getElementById(`mode-${m}`);
         if (btn) {
             btn.addEventListener("click", () => {
-                modeButtons.forEach(x => {
-                    const b = document.getElementById(`mode-${x}`);
-                    if (b) {
-                        b.classList.remove("bg-cyan-500", "text-navy-900");
-                        b.classList.add("text-slate-400");
-                    }
-                });
-                btn.classList.add("bg-cyan-500", "text-navy-900");
-                btn.classList.remove("text-slate-400");
                 AppState.timeMode = m;
+                if (typeof syncTimeModeButtons === 'function') syncTimeModeButtons(m);
 
                 if (m === 'history') {
                     const today = new Date();
@@ -2602,9 +2615,66 @@ function updateTimeNavigationState() {
             const pct = ((AppState.timeHour - 12) / 11) * 100;
             if (progressRow2) progressRow2.style.width = `${pct}%`;
         }
+        }
+    }
+
+    if (AppState.activePanel === 'satellite') {
+        // Just sync the satellite slider and update the sidebar text
+        const slider = document.getElementById("sat-timeline-range");
+        if (slider) slider.value = AppState.timeHour;
+        if (typeof updateSatTimelineText === 'function') updateSatTimelineText();
+        return; // Skip heavy 2D updates and API fetches
     }
 
     return fetchTimeNavigationData(dtStr, AppState.timeMode);
+}
+
+function syncTimeModeButtons(mode) {
+    // 1. Sync Leaflet/Main mode buttons
+    const modeButtons = ["history", "live", "forecast", "scenario"];
+    modeButtons.forEach(x => {
+        const b = document.getElementById(`mode-${x}`);
+        if (b) {
+            b.classList.remove("bg-cyan-500", "text-navy-900");
+            b.classList.add("text-slate-400");
+        }
+    });
+    const mainBtn = document.getElementById(`mode-${mode}`);
+    if (mainBtn) {
+        mainBtn.classList.add("bg-cyan-500", "text-navy-900");
+        mainBtn.classList.remove("text-slate-400");
+    }
+
+    // 2. Sync Satellite mode buttons
+    const satModes = ["live", "forecast", "scenario", "history"];
+    satModes.forEach(x => {
+        const b = document.getElementById(`sat-mode-${x}`);
+        if (b) {
+            b.classList.remove("bg-cyan-500", "text-navy-950", "font-bold");
+            b.classList.add("text-slate-400");
+        }
+    });
+    const satBtn = document.getElementById(`sat-mode-${mode}`);
+    if (satBtn) {
+        satBtn.classList.add("bg-cyan-500", "text-navy-950", "font-bold");
+        satBtn.classList.remove("text-slate-400");
+    }
+
+    // 3. Sync Bottom playbar LIVE button state
+    const pbLiveBtn = document.getElementById("sat-pb-live");
+    if (pbLiveBtn) {
+        const isActive = mode === 'live';
+        pbLiveBtn.classList.toggle("bg-cyan-500", isActive);
+        pbLiveBtn.classList.toggle("text-navy-950", isActive);
+        pbLiveBtn.classList.toggle("text-slate-400", !isActive);
+        const dot = pbLiveBtn.querySelector("span");
+        if (dot) {
+            dot.classList.toggle("bg-navy-950", isActive);
+            dot.classList.toggle("bg-emerald-400", isActive);
+            dot.classList.toggle("bg-slate-500", !isActive);
+            dot.classList.toggle("animate-pulse", isActive);
+        }
+    }
 }
 
 async function fetchTimeNavigationData(dtStr, modeVal) {
@@ -5485,20 +5555,9 @@ function startSpaceSceneAnimation() {
         const venusOrbitAngle   = earthOrbitAngle * 1.62;
 
         // ── 4. Earth rotation — smooth alive wobble ───────────────────────
-        // aliveRotationOffset accumulates a tiny constant spin (~0.15 deg/sec)
-        // so the globe always looks alive and floating. During playback it is
-        // NOT reset to zero — it just adds a very slow visual drift on top of
-        // the IST-synced rotation, which is nearly imperceptible at 1x speed.
-        // The IST-synced formula below already drives the correct orientation.
-        if (window.aliveRotationOffset == null) window.aliveRotationOffset = 0;
-        // Only accumulate when NOT playing (when playing, timeRatio change is
-        // fast enough to look alive without extra drift)
-        if (!AppState.playback.isPlaying) {
-            window.aliveRotationOffset += (0.15 * Math.PI / 180) * (dtMs / 1000);
-        } else {
-            // During playback, timeRatio drives orientation; slowly reduce drift toward 0
-            window.aliveRotationOffset *= 0.98; // exponential decay
-        }
+        // Use a non-accumulating gentle sinusoidal wobble (max 0.28 degrees)
+        // to keep the globe looking active/floating without drifting over time.
+        const aliveWobble = 0.005 * Math.sin(spaceTick * 0.2);
 
         // ── 5. Mercury position (float + wobble) ─────────────────────────
         if (mercuryMesh) {
@@ -5553,10 +5612,10 @@ function startSpaceSceneAnimation() {
             // At 18:00–18:30 IST → India moves into shadow (sunset)
 
             const IST_MERIDIAN_RAD = 1.4399; // 82.5°E in radians
-            // -Math.PI / 2 offset aligns the local meridian so it faces the Sun directly at solar noon (12:00 PM IST)
-            const targetRotY = -earthOrbitAngle - (Math.PI / 2) - IST_MERIDIAN_RAD
+            // -Math.PI offset aligns the local meridian so it faces the Sun directly at solar noon (12:00 PM IST)
+            const targetRotY = -earthOrbitAngle - Math.PI - IST_MERIDIAN_RAD
                              + (timeRatio * 2 * Math.PI)
-                             + window.aliveRotationOffset;
+                             + aliveWobble;
 
             globeViewer.earthGroup.rotation.y = targetRotY;
 
@@ -6316,15 +6375,35 @@ function setupGlobeControls() {
     });
 
     // Timeline Slider
-    // Timeline Slider
     document.getElementById("sat-timeline-range")?.addEventListener("input", (e) => {
         const hour = parseFloat(e.target.value);
         AppState.timeHour = hour;
         window.lastSatHourUpdateTime = Date.now();
         
-        // Sync Leaflet timeline hour (use nearest integer)
-        const leafletHourEl = document.querySelector(`.timeline-hour-dot[data-hour="${Math.round(hour)}"]`);
-        if (leafletHourEl) leafletHourEl.click();
+        // If in live mode, switch to history mode so that the user's manual change is reflected on the globe
+        if (AppState.timeMode === 'live') {
+            AppState.timeMode = 'history';
+            if (typeof syncTimeModeButtons === 'function') syncTimeModeButtons('history');
+            
+            // Enable calendar selectors
+            const yearSelect = document.getElementById("cal-year");
+            const monthSelect = document.getElementById("cal-month");
+            const daySelect = document.getElementById("cal-day");
+            if (yearSelect) yearSelect.disabled = false;
+            if (monthSelect) monthSelect.disabled = false;
+            if (daySelect) daySelect.disabled = false;
+        }
+
+        // Just update active styling on Leaflet timeline hour dot visually, without clicking
+        const roundedHour = Math.round(hour);
+        document.querySelectorAll(".timeline-hour-dot").forEach(dot => {
+            const h = parseInt(dot.getAttribute("data-hour"));
+            if (h === roundedHour) {
+                dot.classList.add("active");
+            } else {
+                dot.classList.remove("active");
+            }
+        });
         
         updateSatTimelineText();
         refreshSatData();
@@ -6464,36 +6543,14 @@ function setupGlobeControls() {
     // Mode buttons
     document.querySelectorAll(".sat-mode-btn").forEach(btn => {
         btn.addEventListener("click", () => {
-            document.querySelectorAll(".sat-mode-btn").forEach(b => {
-                b.classList.remove("bg-cyan-500", "text-navy-950", "font-bold");
-                b.classList.add("text-slate-400");
-            });
-            btn.classList.add("bg-cyan-500", "text-navy-950", "font-bold");
-            btn.classList.remove("text-slate-400");
-
             const mode = btn.id.replace("sat-mode-", "");
             const btnEl = document.getElementById(`mode-${mode}`);
             if (btnEl) {
                 btnEl.click();
             } else {
                 AppState.timeMode = mode;
+                if (typeof syncTimeModeButtons === 'function') syncTimeModeButtons(mode);
                 updateTimeNavigationState();
-            }
-
-            // Update bottom live button state
-            const pbLiveBtn = document.getElementById("sat-pb-live");
-            if (pbLiveBtn) {
-                const isActive = AppState.timeMode === 'live';
-                pbLiveBtn.classList.toggle("bg-cyan-500", isActive);
-                pbLiveBtn.classList.toggle("text-navy-950", isActive);
-                pbLiveBtn.classList.toggle("text-slate-400", !isActive);
-                const dot = pbLiveBtn.querySelector("span");
-                if (dot) {
-                    dot.classList.toggle("bg-navy-950", isActive);
-                    dot.classList.toggle("bg-emerald-400", isActive);
-                    dot.classList.toggle("bg-slate-500", !isActive);
-                    dot.classList.toggle("animate-pulse", isActive);
-                }
             }
         });
     });
@@ -8267,3 +8324,38 @@ window.updateMapData = function() {
     fetchSixDayForecast(AppState.selectedLat, AppState.selectedLng);
 };
 
+// ── Satellite UI Drawer Logic ──────────────────────────────────────────────
+let openSatDrawerId = null;
+
+window.toggleSatDrawer = function(drawerId) {
+    if (openSatDrawerId === drawerId) {
+        closeSatDrawers();
+        return;
+    }
+    
+    closeSatDrawers();
+    
+    const drawer = document.getElementById(drawerId);
+    if (drawer) {
+        drawer.classList.remove('hidden');
+        // Force reflow
+        void drawer.offsetWidth;
+        drawer.classList.add('sat-drawer-open');
+        openSatDrawerId = drawerId;
+    }
+};
+
+window.closeSatDrawers = function() {
+    if (openSatDrawerId) {
+        const drawer = document.getElementById(openSatDrawerId);
+        if (drawer) {
+            drawer.classList.remove('sat-drawer-open');
+            setTimeout(() => {
+                if (openSatDrawerId !== drawer.id) {
+                    drawer.classList.add('hidden');
+                }
+            }, 400); // Wait for CSS transition
+        }
+        openSatDrawerId = null;
+    }
+};
